@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600&amp;display=swap">
   <link rel="stylesheet" href="./typography.css">
+  <link rel="stylesheet" href="./mobile.css">
   <script src="./config.js"></script><script defer src="./assets/lucide.min.js"></script>
   <script type="module" src="./app.js"></script>
 </head>
@@ -25,11 +26,11 @@
       <p class="privacy"><i data-lucide="shield-check"></i>僅授權成員可讀取正式資料</p>
     </section>
     <section id="workspace" hidden>
-      <div class="page-heading"><div><p class="eyebrow">雲端工作區 <span id="demo-label" class="demo-label" hidden>示意資料</span></p><h1 id="page-title">營運總覽</h1></div><span id="season" class="season">2026秋</span></div>
+      <div class="page-heading"><div><p class="eyebrow">雲端工作區 <span id="demo-label" class="demo-label" hidden>示意資料</span></p><h1 id="page-title">營運總覽</h1></div><label class="season-switcher"><select id="season-select" aria-label="查看季別"><option value="">未設定季別</option></select></label></div>
       <div class="sync-line"><span id="sync-status" role="status">尚未讀取</span><button id="refresh" class="icon-button" title="重新讀取雲端" aria-label="重新讀取雲端"><i data-lucide="refresh-cw"></i></button></div>
       <div id="error" class="error-banner" hidden role="alert"></div>
       <div id="view"></div>
-      <p class="footnote">東77 雲端看板 <span id="version">0.1.0</span> · 唯讀</p>
+      <p class="footnote">東77 雲端看板 <span id="version">0.2.0</span> · 唯讀</p>
     </section>
   </main>
   <nav id="nav" class="bottom-nav" aria-label="主要導覽" hidden>

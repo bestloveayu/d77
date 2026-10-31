@@ -33,7 +33,7 @@ npm ci
 npx wrangler login
 ```
 
-正式來源設定請使用 Worker Secret `SHEET_CONFIG`，不要把真實試算表 ID 或資料夾 ID 提交到公開 GitHub。儲存庫只有占位範例；設定同名 Secret 前，先移除 `wrangler.toml` 的 `SHEET_CONFIG` 範例宣告。
+正式來源可以在看板登入後，經由「設定 → 管理季別來源 → 新增季別」輸入，不需要每季修改程式或 Secret。若希望初次部署帶入既有季別，仍可使用 Worker Secret `SHEET_CONFIG`。不要把真實試算表 ID 或資料夾 ID 提交到公開 GitHub；設定同名 Secret 前，先移除 `wrangler.toml` 的範例宣告。不使用初始來源時，也可直接移除該占位宣告。
 
 - `spreadsheetId`：實際業務試算表 ID，只存 Worker Secret。
 - `catalogSheet`：填入實際本季品項統計分頁名稱。
@@ -50,16 +50,15 @@ npx wrangler login
 ```powershell
 npx wrangler secret put GOOGLE_SERVICE_ACCOUNT
 npx wrangler secret put ALLOWED_EMAILS
-npx wrangler secret put SHEET_CONFIG
 ```
 
-`GOOGLE_SERVICE_ACCOUNT` 貼上完整服務帳號 JSON；`ALLOWED_EMAILS` 填入于正與小東已確認的兩個 Gmail，以逗號分隔；`SHEET_CONFIG` 貼上填妥的來源 JSON。帳號白名單與真實來源配置均不提交 GitHub。
+`GOOGLE_SERVICE_ACCOUNT` 貼上完整服務帳號 JSON；`ALLOWED_EMAILS` 填入于正與小東已確認的兩個 Gmail，以逗號分隔，請將于正放在第一個（預設管理者）。也可以另用 `ADMIN_EMAILS` Secret 指定來源管理者。帳號白名單與真實來源配置均不提交 GitHub。可選的 `SHEET_CONFIG` Secret 是初次來源，不再需要每季更改。
 
 ```powershell
 npx wrangler deploy
 ```
 
-部署會建立專用 Durable Object，保存已整合快照、通知及各自已讀，不修改原業務試算表。每五分鐘排程讀取。檢查 Cloudflare 的使用量與方案限制，不保證所有用量永久免費。
+部署會建立專用 Durable Object，保存私密季別設定、已整合快照、通知及各自已讀，不修改原業務試算表。每五分鐘排程讀取預設通知季別，歷史季別在開啟時按快取期限讀取，亦可手動重新整理。檢查 Cloudflare 的使用量與方案限制，不保證所有用量永久免費。
 
 將回傳的 `https://...workers.dev` 網址填到 `public/config.js` 的 `apiBase`，不含結尾端點。若改用自訂 API 網域，需要同步調整 index.html 的 CSP connect-src。
 
@@ -92,9 +91,22 @@ npx wrangler deploy
 
 ## 6. 驗收與日後更新
 
+### 每季操作
+
+1. 先將新試算表／規則資料夾以檢視者分享給既有服務帳號。
+2. 管理者登入看板，點右上設定 → 管理季別來源 → 新增季別。
+3. 填年份、春／秋、試算表網址、兩個分頁名稱、中文規則資料夾網址；金流與協作分頁可在「進階來源設定」調整。
+4. 按「測試連線」，確認訂單、品項及規則數量。測試失敗不會改掉原設定。
+5. 勾選是否設為預設通知季別，再按「確認儲存來源」。儲存前服務會再次核對來源，測試結果十分鐘後過期，修改任何來源欄位須重測。
+6. 頁面季別選單可隨時切換新舊季。小東無需再次設定來源。
+
+每季不必重新發布網站或 Worker，也不需要改原 GAS。新來源超出服務帳號既有權限時仍需先分享；程式不會自動取得權限。相同季別更換來源會建立獨立快照及通知基準，首次讀取不大量推播舊單；舊來源資料不會被新來源覆寫。
+
+### 其他事項
+
 - 第一份完整讀取僅建立基準，不把所有歷史訂單通知一次。
 - 比對 3 位顧客、3 款庫存、2 份規則與原試算表，確定欄位解析正確才日常使用。
 - 表單追加或改名後，更新欄位設定或 aliases；資料無法唯一對應時不猜測。
 - 不在手機看板執行重新配貨、回填訂購量、寄信、下單或金流修復。
-- 前端更新不要重設 Durable Object 名稱 `shared-v1`，避免遺失通知基準及已讀。
+- 前端更新不要重設 Durable Object 名稱 `shared-v1`，其中保存季別設定與通知偏好。各季資料以季別及來源摘要隔離。
 - 公開 GitHub 只提交程式與圖像。真實資料快照、帳號白名單、服務金鑰均不提交。

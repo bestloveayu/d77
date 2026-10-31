@@ -1,4 +1,6 @@
 import {demoSnapshot,demoEvents} from './demo.js';
+import {showSeasonSettings} from './season-settings.js';
+import {SOURCE_DEFAULTS} from './season-config.js';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
 const icon=name=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -8,6 +10,12 @@ const badge=(text,kind='')=>`<span class="badge ${kind}">${esc(text)}</span>`;
 const names={overview:'營運總覽',orders:'顧客訂單',inventory:'庫存查詢',rules:'規則進度',notifications:'通知中心'};
 const eventIcon={order:'clipboard-list',change:'git-compare-arrows',shortage:'triangle-alert',rules:'book-open',activity:'package-check'};
 let data=null,events=[],token='',account='',demo=false,stale=false,busy=false,error='',page='overview',filter='all',search='',sort='new',timer;
+let selectedSeason=localStorage.getItem('d77-season')||'',requestEpoch=0;
+let seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};
+const demoEventStore=new Map();
+function demoSources(){return {revision:0,defaultSeason:'2026秋',canManage:true,seasons:['2026秋','2026春'].map(season=>({season,config:{season,spreadsheetId:'sample-book',catalogSheet:season+'品項統計',responseSheet:season+'預購回應',rulesFolderId:'sample-folder',...SOURCE_DEFAULTS,aliases:{},productColumns:{}},testedAt:new Date().toISOString()}))};}
+function demoData(season){const value=demoSnapshot();value.season=season;if(season!=='2026秋'){value.orders=[];value.products=[];value.summary={orders:0,attention:0,shortages:0,unknownStock:0,rulesReady:0,rulesTotal:0};value.finance={income:0,cost:0,profit:0};}return value;}
+function seasonEvents(season){if(!demoEventStore.has(season))demoEventStore.set(season,season==='2026秋'?demoEvents():[]);return demoEventStore.get(season);}
 const icons=()=>window.lucide?.createIcons();
 function links(p){return `<div class="rule-links">${p?.rules?.map(f=>f.url?`<a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${icon(f.cards?'files':'file-text')}${f.cards?'卡表':'規則檔'}${icon('arrow-up-right')}</a>`:`<span class="muted">${f.cards?'卡表':'規則檔'} · 示意</span>`).join('')||''}</div>`;}
 function empty(text){return `<div class="empty">${icon('inbox')}${esc(text)}</div>`;}
@@ -17,7 +25,8 @@ function showWorkspace(){
   page=names[location.hash.slice(1)]?location.hash.slice(1):'overview';render();
 }
 function chrome(){
-  $('#page-title').textContent=names[page];$('#season').textContent=data?.season||'未設定';
+  $('#page-title').textContent=names[page];
+  const select=$('#season-select');select.innerHTML=seasonState.seasons.length?seasonState.seasons.map(s=>`<option value="${esc(s.season)}">${esc(s.season)}</option>`).join(''):'<option value="">未設定季別</option>';select.value=selectedSeason;select.disabled=busy||!seasonState.seasons.length;
   $('#sync-status').textContent=demo?'示範模式 · 未連接雲端':data?`${stale?'資料可能過期':'雲端資料已讀取'} · ${new Date(data.updatedAt).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}`:'尚無成功讀取資料';
   document.querySelectorAll('#nav a').forEach(a=>{a.classList.toggle('active',a.dataset.page===page);a.setAttribute('aria-current',a.dataset.page===page?'page':'false');});
   const unread=events.filter(e=>!e.read).length;$('#unread').hidden=!unread;$('#unread').textContent=unread>99?'99+':unread;
@@ -76,18 +85,30 @@ function render(){
 }
 async function api(path,body){
   if(!config.apiBase||!token)throw new Error('請先完成登入與雲端設定');
-  const response=await fetch(config.apiBase.replace(/\/$/,'')+path,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+token,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),cache:'no-store',signal:AbortSignal.timeout(60000)});
+  const endpoint=new URL(config.apiBase.replace(/\/$/,'')+path);if(selectedSeason&&!path.startsWith('/seasons')&&path!=='/preferences')endpoint.searchParams.set('season',selectedSeason);
+  const response=await fetch(endpoint,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+token,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),cache:'no-store',signal:AbortSignal.timeout(60000)});
   const result=await response.json();if(!response.ok){if(response.status===401){logout();throw new Error('登入已過期，請重新登入');}throw new Error(result.error||'讀取失敗');}return result;
 }
 async function refresh(force=false){
-  if(busy)return;busy=true;chrome();
-  try{if(demo){data=demoSnapshot();error='';return;}
+  if(busy)return;const epoch=++requestEpoch;busy=true;chrome();
+  try{if(demo){data=demoData(selectedSeason);events=seasonEvents(selectedSeason);error='';return;}
+    const list=await api('/seasons');if(epoch!==requestEpoch||!token)return;seasonState=list;
+    if(!list.seasons.some(s=>s.season===selectedSeason))selectedSeason=list.defaultSeason||list.seasons[0]?.season||'';
+    if(!selectedSeason){data=null;events=[];error='尚未設定季別來源，請到設定新增季別。';return;}
+    const requested=selectedSeason;
     if(force)await api('/refresh',{});
-    const result=await api('/snapshot');stale=result.stale;error=result.error?.message||'';if(result.viewer)account=result.viewer;if(result.snapshot)data=result.snapshot;
-    events=(await api('/notifications')).events;
-  }catch(e){error=e.name==='TimeoutError'?'連線逾時，保留上次成功資料':e.message;stale=true;}
-  finally{busy=false;render();}
+    const result=await api('/snapshot');if(epoch!==requestEpoch||requested!==selectedSeason)return;
+    stale=result.stale;error=result.error?.message||'';if(result.viewer)account=result.viewer;
+    if(result.snapshot){if(result.snapshot.season!==requested)throw new Error('回應季別不一致，未顯示資料');data=result.snapshot;}else data=null;
+    const notifications=await api('/notifications');if(epoch!==requestEpoch||requested!==selectedSeason)return;events=notifications.events;
+  }catch(e){if(epoch===requestEpoch){error=e.name==='TimeoutError'?'連線逾時，保留本季上次成功資料':e.message;stale=true;}}
+  finally{if(epoch===requestEpoch){busy=false;render();}}
 }
+async function changeSeason(season){requestEpoch++;busy=false;selectedSeason=season;localStorage.setItem('d77-season',season);data=null;events=[];filter='all';search='';sort='new';error='';await refresh();}
+function manageSeasons(){showSeasonSettings({demo,getState:()=>seasonState,api,openDialog,icons,
+  saveDemo:({config,makeDefault})=>{seasonState={...seasonState,revision:seasonState.revision+1,defaultSeason:makeDefault||!seasonState.defaultSeason?config.season:seasonState.defaultSeason,seasons:[...seasonState.seasons.filter(s=>s.season!==config.season),{season:config.season,config,testedAt:new Date().toISOString()}]};},
+  onSaved:async season=>{if(!demo)seasonState=await api('/seasons');await changeSeason(season);}
+});}
 function go(target,newFilter='all'){filter=newFilter;search='';sort='new';if(page===target)render();else location.hash=target;}
 function openDialog(title,body){$('#detail-title').textContent=title;$('#detail-body').innerHTML=body;icons();if(!$('#detail').open)$('#detail').showModal();}
 function orderDetail(id){const o=data.orders.find(o=>o.id===id);if(!o)return;
@@ -99,16 +120,18 @@ function productDetail(name,rulesOnly=false){const p=data.products.find(p=>p.nam
 }
 async function markRead(ids){if(!ids.length)return;if(!demo)await api('/read',{ids});events.forEach(e=>{if(ids.includes(e.id))e.read=true;});render();}
 async function settings(){
-  if(!data){$('#login-status').textContent='請先登入，或開啟示範資料。';return;}
+  if(!data&&!token&&!demo){$('#login-status').textContent='請先登入，或開啟示範資料。';return;}
   let value={preferences:{pushEnabled:false,quiet:true,quietStart:22,quietEnd:8,types:['order','change','shortage','rules','activity']},pushAvailable:false};
   if(!demo)try{value=await api('/preferences');}catch(e){setError(e.message);return;}
   const p=value.preferences;
   openDialog('通知與帳號',`<p class="account">${demo?'示範模式':esc(account)}</p><form id="prefs"><label class="field">手機推播<input type="checkbox" name="pushEnabled" ${p.pushEnabled?'checked':''} ${value.pushAvailable?'':'disabled'}></label>${!value.pushAvailable?'<p class="read-only-note">尚未連接手機推播服務，通知中心仍可使用。</p>':''}<label class="field">勿擾時段<input type="checkbox" name="quiet" ${p.quiet?'checked':''}></label><div class="field"><span>開始／結束</span><span><select name="quietStart" aria-label="勿擾開始">${Array.from({length:24},(_,i)=>`<option ${i===p.quietStart?'selected':''} value="${i}">${i}:00</option>`).join('')}</select> — <select name="quietEnd" aria-label="勿擾結束">${Array.from({length:24},(_,i)=>`<option ${i===p.quietEnd?'selected':''} value="${i}">${i}:00</option>`).join('')}</select></span></div>${[['order','新訂單'],['change','訂單異動'],['shortage','缺貨提醒'],['rules','規則完成'],['activity','協作動態']].map(([type,label])=>`<label class="field">${label}<input type="checkbox" name="types" value="${type}" ${p.types.includes(type)?'checked':''}></label>`).join('')}<div class="section-actions"><button class="primary" type="submit">儲存設定</button><button id="logout" type="button">登出</button></div><p id="prefs-status" class="notice" role="status"></p></form>`);
   $('#prefs').onsubmit=async e=>{e.preventDefault();const form=new FormData(e.target);const body={pushEnabled:form.has('pushEnabled'),quiet:form.has('quiet'),quietStart:Number(form.get('quietStart')),quietEnd:Number(form.get('quietEnd')),types:form.getAll('types')};try{if(!demo)await api('/preferences',body);$('#prefs-status').textContent=demo?'示範設定，未寫入雲端':'設定已儲存';}catch(err){$('#prefs-status').textContent=err.message;}};
   $('#logout').onclick=logout;
+  const form=$('#prefs');const section=document.createElement('section');section.className='setting-section';section.innerHTML=`<h3>季別與來源</h3><button id="season-manage" type="button" class="setting-link"><span>${icon('calendar-range')}${seasonState.canManage?'管理季別來源':'查看季別'}</span>${icon('chevron-right')}</button>`;form.before(section);$('#season-manage').onclick=manageSeasons;icons();
 }
-function logout(){token='';account='';data=null;events=[];demo=false;clearInterval(timer);$('#detail').close();$('#workspace').hidden=true;$('#nav').hidden=true;$('#login').hidden=false;$('#view').replaceChildren();$('#login-status').textContent='已登出';window.google?.accounts.id.disableAutoSelect();icons();}
-$('#demo-enter').onclick=()=>{demo=true;data=demoSnapshot();events=demoEvents();error='';showWorkspace();};
+function logout(){requestEpoch++;busy=false;token='';account='';data=null;events=[];demo=false;seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};clearInterval(timer);$('#detail').close();$('#workspace').hidden=true;$('#nav').hidden=true;$('#login').hidden=false;$('#view').replaceChildren();$('#login-status').textContent='已登出';window.google?.accounts.id.disableAutoSelect();icons();}
+$('#demo-enter').onclick=()=>{demo=true;seasonState=demoSources();selectedSeason='2026秋';data=demoData(selectedSeason);events=seasonEvents(selectedSeason);error='';showWorkspace();};
+$('#season-select').onchange=e=>changeSeason(e.target.value);
 $('#refresh').onclick=()=>refresh(true);$('#settings').onclick=settings;$('#detail-close').onclick=()=>$('#detail').close();
 $('#theme').onclick=()=>{document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';localStorage.setItem('d77-theme',document.documentElement.dataset.theme);};
 document.documentElement.dataset.theme=localStorage.getItem('d77-theme')||'light';

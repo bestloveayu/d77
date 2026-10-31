@@ -28,8 +28,8 @@ async function get(url,token) {
   if(!response.ok)throw new Error(response.status===403?'讀取權限不足，請將資料來源以檢視者分享給服務帳號':response.status===404?'找不到雲端分頁或資料夾':response.status===429?'Google 讀取額度暫時不足':'Google 讀取失敗（'+response.status+'）');
   return response.json();
 }
-export async function collect(env) {
-  const config=JSON.parse(env.SHEET_CONFIG||'{}');
+export async function collect(env,sourceConfig) {
+  const config=sourceConfig||JSON.parse(env.SHEET_CONFIG||'{}');
   if(!/^\d{4}[春秋]$/.test(config.season)||['spreadsheetId','catalogSheet','responseSheet','ledgerSheet','rulesFolderId'].some(k=>!config[k]||config[k].includes('REPLACE')))throw new Error('尚未完成雲端來源設定');
   const token=await serviceToken(env);
   const url=new URL(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(config.spreadsheetId)}/values:batchGet`);
