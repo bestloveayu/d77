@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#215e50"><meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' https://accounts.google.com; frame-src https://accounts.google.com; connect-src 'self' https://accounts.google.com https://*.workers.dev; img-src 'self' data: https://lh3.googleusercontent.com; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <title>東77 · 雲端看板</title>
+  <link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./style.css">
+  <script src="./config.js"></script><script defer src="./assets/lucide.min.js"></script>
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <header class="masthead"><div class="masthead-inner">
+    <a class="brand" href="#overview" aria-label="東77 總覽">東<span>77</span><small>桌遊・遊戲・人與相聚</small></a>
+    <div class="header-tools"><button id="theme" class="icon-button" title="切換日夜模式" aria-label="切換日夜模式"><i data-lucide="moon"></i></button><button id="settings" class="icon-button" title="通知與帳號設定" aria-label="通知與帳號設定"><i data-lucide="settings-2"></i></button></div>
+  </div></header>
+  <main id="main">
+    <section id="login" class="login-panel">
+      <p class="eyebrow">東77 CLOUD</p><h1>雲端看板</h1><p class="muted">登入查看訂單、庫存與規則進度。</p>
+      <div id="google-login"></div><p id="login-status" class="notice" role="status"></p>
+      <button id="demo-enter" class="secondary"><i data-lucide="scan-eye"></i>瀏覽示範資料</button>
+      <p class="privacy"><i data-lucide="shield-check"></i>僅授權成員可讀取正式資料</p>
+    </section>
+    <section id="workspace" hidden>
+      <div class="page-heading"><div><p class="eyebrow">雲端工作區 <span id="demo-label" class="demo-label" hidden>示意資料</span></p><h1 id="page-title">營運總覽</h1></div><span id="season" class="season">2026秋</span></div>
+      <div class="sync-line"><span id="sync-status" role="status">尚未讀取</span><button id="refresh" class="icon-button" title="重新讀取雲端" aria-label="重新讀取雲端"><i data-lucide="refresh-cw"></i></button></div>
+      <div id="error" class="error-banner" hidden role="alert"></div>
+      <div id="view"></div>
+      <p class="footnote">東77 雲端看板 <span id="version">0.1.0</span> · 唯讀</p>
+    </section>
+  </main>
+  <nav id="nav" class="bottom-nav" aria-label="主要導覽" hidden>
+    <a href="#overview" data-page="overview"><i data-lucide="house"></i><span>總覽</span></a>
+    <a href="#orders" data-page="orders"><i data-lucide="clipboard-list"></i><span>訂單</span></a>
+    <a href="#inventory" data-page="inventory"><i data-lucide="package"></i><span>庫存</span></a>
+    <a href="#rules" data-page="rules"><i data-lucide="book-open"></i><span>規則</span></a>
+    <a href="#notifications" data-page="notifications"><i data-lucide="bell"></i><span>通知</span><b id="unread" hidden></b></a>
+  </nav>
+  <dialog id="detail"><div class="dialog-heading"><h2 id="detail-title"></h2><button id="detail-close" class="icon-button" aria-label="關閉" title="關閉"><i data-lucide="x"></i></button></div><div id="detail-body"></div></dialog>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</body></html>

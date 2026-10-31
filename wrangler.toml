@@ -1,0 +1,20 @@
+name = "dong77-cloud-board-api"
+main = "worker/index.mjs"
+compatibility_date = "2026-10-01"
+
+[vars]
+# Replace all placeholders before deployment. No production credentials here.
+ALLOWED_ORIGIN = "https://bestloveayu.github.io"
+GOOGLE_CLIENT_ID = "REPLACE.apps.googleusercontent.com"
+SHEET_CONFIG = '{"spreadsheetId":"REPLACE_SPREADSHEET_ID","season":"2026秋","catalogSheet":"REPLACE_品項統計分頁名稱","responseSheet":"2026秋預購回應","ledgerSheet":"金流進出貨總表","teamSheet":"_collaboration_v1","documentsSheet":"_collaboration_orders_v1","rulesFolderId":"REPLACE_中文規則資料夾ID","productColumns":{},"aliases":{}}'
+
+[[durable_objects.bindings]]
+name = "BOARD"
+class_name = "BoardStore"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BoardStore"]
+
+[triggers]
+crons = ["*/5 * * * *"]

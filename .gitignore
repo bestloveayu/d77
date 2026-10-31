@@ -1,0 +1,11 @@
+node_modules/
+.dev.vars
+.env*
+*.sqlite*
+service-account*.json
+credentials*.json
+.wrangler/
+test-results/
+.npm-cache/
+.config/
+*.zip
