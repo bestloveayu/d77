@@ -1,0 +1,8 @@
+:root{--heading-font:'Noto Serif TC','Songti TC','SimSun','PMingLiU',serif}
+h1,h2,h3,.page-heading h1,.dialog-heading h2,.brand,.brand span,
+.order-name,.stock-row .order-name,.stock-name,.rule-main h3,
+.alert-row strong,.event-main button,.detail-line>strong{
+  font-family:var(--heading-font);
+  font-weight:600;
+  font-synthesis:none;
+}

@@ -5,6 +5,7 @@ try{const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[
 page.on('pageerror',e=>errors.push(e.message));await page.route('https://accounts.google.com/**',r=>r.abort());
 await page.goto('http://127.0.0.1:8788');await page.getByRole('button',{name:'瀏覽示範資料'}).click();
 await page.getByRole('heading',{name:'營運總覽'}).waitFor();
+ assert((await page.locator('h1').first().evaluate(e=>getComputedStyle(e).fontFamily)).includes('Noto Serif TC'));
 for(const [view,title] of [['overview','營運總覽'],['orders','顧客訂單'],['inventory','庫存查詢'],['rules','規則進度'],['notifications','通知中心']]){
  await page.locator(`#nav [data-page=${view}]`).click();await page.getByRole('heading',{name:title,exact:true}).waitFor();
  await page.screenshot({path:`test-results/mobile-${view}.png`,fullPage:true});
