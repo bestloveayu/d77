@@ -2,7 +2,7 @@ import {demoSnapshot,demoEvents} from './demo.js';
 import {showSeasonSettings} from './season-settings.js';
 import {SOURCE_DEFAULTS} from './season-config.js';
 import {stageLabel,orderProgressLabels} from './order-status.js';
-import {installSwipe} from './swipe.js?v=20261101.11';
+import {installSwipe} from './swipe.js?v=20261101.13';
 import {createPushClient} from './push.js?v=20261101.12';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
 const icon=name=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
@@ -195,7 +195,11 @@ document.addEventListener('click',async e=>{
 });
 window.addEventListener('hashchange',()=>{page=names[location.hash.slice(1)]?location.hash.slice(1):'overview';render();window.scrollTo(0,0);});
 $('#nav').addEventListener('click',e=>{if(e.target.closest('a')){filter='all';search='';sort='new';}});
-installSwipe($('#workspace'),{current:()=>page,enabled:()=>!!data&&!busy&&!$('#workspace').hidden,navigate:target=>go(target)});
+installSwipe($('#workspace'),{current:()=>page,enabled:()=>!!data&&!busy&&!$('#workspace').hidden,navigate:target=>go(target),decorate:icons,preview:target=>{
+  const previous={filter,search,sort};filter='all';search='';sort='new';
+  try{return ({overview,orders:ordersView,inventory:inventoryView,rules:rulesView,notifications:notificationsView}[target])();}
+  finally{({filter,search,sort}=previous);}
+}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&token)refresh();});
 async function initializeGoogle(){
   if(!config.googleClientId||!config.apiBase){$('#login-status').textContent='正式雲端連線尚未設定，可先瀏覽示範資料。';icons();return;}

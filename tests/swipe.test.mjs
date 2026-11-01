@@ -1,5 +1,9 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {swipePage} from '../public/swipe.js';
+import {swipePage,dragOffset} from '../public/swipe.js';
+test('drag position follows the finger and stays within one page width',()=>{
+  assert.equal(dragOffset(-120,390),-120);assert.equal(dragOffset(90,390),90);
+  assert.equal(dragOffset(500,390),390);assert.equal(dragOffset(-500,390),-390);
+});
 test('horizontal swipe cycles pages in both directions',()=>{
   assert.equal(swipePage('overview',-100,10,300),'orders');
   assert.equal(swipePage('notifications',-100,0,300),'overview');
