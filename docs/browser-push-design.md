@@ -1,6 +1,6 @@
 # Android Browser Push
 
-Status: approved by the user; implementation and deployment verification in progress. Existing ntfy integration remains disabled.
+Status: deployed as 0.3.0. Automated verification passed; physical Android receipt awaits user acceptance. Existing ntfy integration remains disabled.
 
 ## User Experience
 

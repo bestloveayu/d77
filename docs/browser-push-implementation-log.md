@@ -8,4 +8,5 @@
 - Generated VAPID keys directly into Worker secrets; private material was neither printed nor stored in source files.
 - Simulated browser UI verifies enable/test/logout and layout at 320, 390 and 1440 pixels. Physical Android delivery is not established by these tests.
 - Verification: 45 unit/security tests passed; push-settings and existing overview/order/inventory/swipe browser regressions passed. Worker version `dbe669fb-83aa-4254-baf9-de9a576b214e` deployed; anonymous push endpoints return 401, wrong origins return 403, and the private dispatch route is not publicly routable (404).
+- Frontend release commit `e9212d348fed46244046ef33a15fc42e3c9b8b9f`; Pages run `41301119817` completed successfully. Public HTML reports 0.3.0; app, push client, service worker and stylesheet all return HTTP 200. Physical phone receipt remains pending.
 

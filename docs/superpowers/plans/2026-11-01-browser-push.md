@@ -59,6 +59,6 @@
 - [x] Generate VAPID credentials locally and install private material as Worker secrets without printing it.
 - [x] Review changes for secrets, account isolation and unintended business-data writes.
 - [x] Run all unit and relevant browser regressions; record actual results.
-- [ ] Deploy Worker, verify unauthorized endpoints reject requests, then publish frontend and verify Pages succeeds.
-- [ ] Provide Android instructions for enabling and testing notifications, including a page-closed delivery test. Mark physical delivery pending until the user confirms receipt.
+- [x] Deploy Worker, verify unauthorized endpoints reject requests, then publish frontend and verify Pages succeeds.
+- [x] Provide Android instructions for enabling and testing notifications, including a page-closed delivery test. Mark physical delivery pending until the user confirms receipt.
 
