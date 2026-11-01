@@ -2,7 +2,7 @@ import {demoSnapshot,demoEvents} from './demo.js';
 import {showSeasonSettings} from './season-settings.js';
 import {SOURCE_DEFAULTS} from './season-config.js';
 import {stageLabel,orderProgressLabels} from './order-status.js';
-import {installSwipe} from './swipe.js';
+import {installSwipe} from './swipe.js?v=20261101.11';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
 const icon=name=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

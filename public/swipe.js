@@ -5,7 +5,19 @@ export function swipePage(current,dx,dy,duration){
   return pages[(index+(dx<0?1:-1)+pages.length)%pages.length];
 }
 export function installSwipe(root,{current,enabled,navigate}){
-  let start=null;
+  let start=null,animating=false;
+  async function changePage(next,dx){
+    const surface=root.querySelector('#view')||root;
+    if(typeof surface.animate!=='function'||matchMedia('(prefers-reduced-motion: reduce)').matches){navigate(next);return;}
+    animating=true;
+    const direction=dx<0?-1:1;
+    try{
+      await surface.animate([{transform:'translateX(0)',opacity:1},{transform:`translateX(${direction*45}px)`,opacity:0}],{duration:130,easing:'ease-in'}).finished;
+      navigate(next);
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      await surface.animate([{transform:`translateX(${-direction*45}px)`,opacity:0},{transform:'translateX(0)',opacity:1}],{duration:190,easing:'ease-out'}).finished;
+    }finally{animating=false;}
+  }
   const blocked=target=>{
     if(!(target instanceof Element)||target.closest('input,textarea,select,button,a,[contenteditable=true],dialog'))return true;
     for(let el=target;el&&el!==root;el=el.parentElement){
@@ -15,7 +27,7 @@ export function installSwipe(root,{current,enabled,navigate}){
   };
   root.addEventListener('touchstart',event=>{
     start=null;
-    if(!enabled()||innerWidth>820||document.querySelector('dialog[open]')||event.touches.length!==1||blocked(event.target))return;
+    if(animating||!enabled()||innerWidth>820||document.querySelector('dialog[open]')||event.touches.length!==1||blocked(event.target))return;
     const t=event.touches[0];
     if(t.clientX<24||t.clientX>innerWidth-24)return;
     start={x:t.clientX,y:t.clientY,time:performance.now()};
@@ -26,7 +38,7 @@ export function installSwipe(root,{current,enabled,navigate}){
     const from=start;start=null;
     if(!from||!enabled()||document.querySelector('dialog[open]')||event.changedTouches.length!==1)return;
     const to=event.changedTouches[0];const next=swipePage(current(),to.clientX-from.x,to.clientY-from.y,performance.now()-from.time);
-    if(next)navigate(next);
+    if(next)void changePage(next,to.clientX-from.x);
   },{passive:true});
 }
 
