@@ -1,6 +1,7 @@
 import { authenticate, collect } from './google.mjs';
 import { changes, digest } from './model.mjs';
 import {SeasonRegistry} from './seasons.mjs';
+import {PushService,defaultPreferences} from './browser-push.mjs';
 const json=(body,status=200,headers={})=>Response.json(body,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
 export const seasonObjectName=entry=>'season:'+entry.season+':'+entry.configDigest;
 async function seasonTarget(env,season,user){
@@ -17,11 +18,11 @@ export default {
     if(origin&&origin!==env.ALLOWED_ORIGIN)return json({error:'來源不允許'},403);
     if(request.method==='OPTIONS')return new Response(null,{status:204,headers:cors});
     const url=new URL(request.url),path=url.pathname;
-    if(!['/snapshot','/refresh','/notifications','/read','/preferences','/seasons','/seasons/test','/seasons/save'].includes(path))return json({error:'找不到端點'},404,cors);
+    if(!['/snapshot','/refresh','/notifications','/read','/preferences','/push/status','/push/device','/seasons','/seasons/test','/seasons/save'].includes(path))return json({error:'找不到端點'},404,cors);
     let user;try{user=await authenticate(request,env);}catch(e){return json({error:e.status?e.message:'登入驗證失敗，請重新登入'},e.status||401,cors);}
     try{
-      if(['/snapshot','/notifications','/seasons'].includes(path)&&request.method!=='GET')return json({error:'方法不允許'},405,cors);
-      if(!['/snapshot','/notifications','/preferences','/seasons'].includes(path)&&request.method!=='POST')return json({error:'方法不允許'},405,cors);
+      if(['/snapshot','/notifications','/seasons','/push/status'].includes(path)&&request.method!=='GET')return json({error:'方法不允許'},405,cors);
+      if(!['/snapshot','/notifications','/preferences','/seasons','/push/status'].includes(path)&&request.method!=='POST')return json({error:'方法不允許'},405,cors);
       if(path==='/preferences'&&!['GET','POST'].includes(request.method))return json({error:'方法不允許'},405,cors);
       const limit=path.startsWith('/seasons/')?32000:8192;
       if(Number(request.headers.get('Content-Length')||0)>limit)return json({error:'請求過大'},413,cors);
@@ -29,7 +30,7 @@ export default {
       if(body.length>limit)return json({error:'請求過大'},413,cors);
       const admins=String(env.ADMIN_EMAILS||env.ALLOWED_EMAILS?.split(',')[0]||'').split(',').map(s=>s.trim().toLowerCase());
       let stub=env.BOARD.get(env.BOARD.idFromName('shared-v1')),entry;
-      if(!path.startsWith('/seasons')&&path!=='/preferences'){
+      if(!path.startsWith('/seasons')&&!path.startsWith('/push/')&&path!=='/preferences'){
         const season=url.searchParams.get('season');if(season&&!/^\d{4}[春秋]$/.test(season))return json({error:'季別格式不正確'},400,cors);
         const target=await seasonTarget(env,season,user.sub);
         if(target.error)return new Response(target.error.body,{status:target.error.status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}});
@@ -44,7 +45,7 @@ export default {
   }
 };
 export class BoardStore {
-  constructor(ctx,env){this.ctx=ctx;this.env=env;this.pending=null;}
+  constructor(ctx,env){this.ctx=ctx;this.env=env;this.pending=null;this.pushQueue=Promise.resolve();}
   async snapshot(){
     const meta=await this.ctx.storage.get('snapshot-meta');if(!meta)return null;
     let raw='';for(let i=0;i<meta.count;i++){const part=await this.ctx.storage.get('snapshot:'+i);if(typeof part!=='string')throw new Error('雲端快照不完整');raw+=part;}
@@ -82,6 +83,10 @@ export class BoardStore {
     return this.pending;
   }
   async push(events){
+    // Device delivery is independent from business reads and never changes orders.
+    try{
+      await this.env.BOARD.get(this.env.BOARD.idFromName('shared-v1')).fetch('https://internal/internal/push',{method:'POST',body:JSON.stringify({events})});
+    }catch{await this.ctx.storage.put('pushError',{message:'手機推播未送達；通知中心紀錄已保留',time:new Date().toISOString()});}
     // Optional ntfy integration. Disabled until an individual explicitly opts in.
     let targets;try{targets=JSON.parse(this.env.NTFY_TARGETS||'{}');}catch{return;}
     for(const [email,target] of Object.entries(targets)){
@@ -106,12 +111,24 @@ export class BoardStore {
   async fetch(request){
     const path=new URL(request.url).pathname,user=request.headers.get('X-User'),email=request.headers.get('X-Email');
     if(path.startsWith('/seasons')||path==='/internal/config')return new SeasonRegistry(this.ctx.storage,this.env,collect).handle(request);
+    const push=new PushService(this.ctx.storage,this.env);
+    const exclusive=fn=>{const task=this.pushQueue.then(fn);this.pushQueue=task.catch(()=>{});return task;};
+    if(path==='/internal/push'){
+      const {events}=await request.json();
+      await exclusive(()=>push.deliver(events,async address=>await this.ctx.storage.get('prefs:'+await digest(address))||defaultPreferences()));
+      return json({ok:true});
+    }
     let sourceConfig;try{sourceConfig=JSON.parse(request.headers.get('X-Source-Config')||'null');}catch{return json({error:'來源設定無效'},400);}
     const notify=request.headers.get('X-Notify')==='1';
     if(path==='/refresh'){
       await this.update(sourceConfig,notify);return json({ok:true,error:await this.ctx.storage.get('error')||null});
     }
     if(!user||!email)return json({error:'需要登入'},401);
+    if(path==='/push/status')return json(await push.status(email));
+    if(path==='/push/device'){
+      try{return json(await exclusive(async()=>push.device(email,await request.json())));}
+      catch(e){return json({error:e.status?e.message:'裝置訂閱處理失敗'},e.status||400);}
+    }
     if(path==='/snapshot'){
       const current=await this.snapshot();
       if(!current||Date.now()-Date.parse(current.updatedAt)>300000)await this.update(sourceConfig,notify);
@@ -138,8 +155,9 @@ export class BoardStore {
         await this.ctx.storage.put(key,{pushEnabled:body.pushEnabled,quiet:body.quiet,quietStart:body.quietStart,quietEnd:body.quietEnd,types:body.types});
       }
       let targets={};try{targets=JSON.parse(this.env.NTFY_TARGETS||'{}');}catch{}
-      return json({preferences:await this.ctx.storage.get(key)||{pushEnabled:false,quiet:true,quietStart:22,quietEnd:8,types:['order','change','shortage','rules','activity']},pushAvailable:!!targets[email]});
+      return json({preferences:await this.ctx.storage.get(key)||defaultPreferences(),pushAvailable:push.available()||!!targets[email]});
     }
     return json({error:'找不到端點'},404);
   }
 }
+

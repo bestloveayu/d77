@@ -3,6 +3,9 @@ import worker,{BoardStore} from '../worker/index.mjs';
 test('API denies anonymous, wrong origin, unknown paths',async()=>{
   const env={ALLOWED_ORIGIN:'https://bestloveayu.github.io',GOOGLE_CLIENT_ID:'test',ALLOWED_EMAILS:''};
   assert.equal((await worker.fetch(new Request('https://api/snapshot'),env)).status,401);
+  assert.equal((await worker.fetch(new Request('https://api/push/status'),env)).status,401);
+  assert.equal((await worker.fetch(new Request('https://api/push/device',{method:'POST'}),env)).status,401);
+  assert.equal((await worker.fetch(new Request('https://api/internal/push',{method:'POST'}),env)).status,404);
   assert.equal((await worker.fetch(new Request('https://api/snapshot',{headers:{Origin:'https://evil.test'}}),env)).status,403);
   assert.equal((await worker.fetch(new Request('https://api/orders/delete'),env)).status,404);
   assert.equal((await worker.fetch(new Request('https://api/snapshot',{headers:{Authorization:'Bearer garbage'}}),env)).status,401);
@@ -22,3 +25,4 @@ test('bad notification settings rejected; no push until opt-in',async()=>{
   assert.equal((await board.fetch(req({pushEnabled:true}))).status,400);
   assert.equal((await board.fetch(req({pushEnabled:false,quiet:true,quietStart:22,quietEnd:8,types:['order']}))).status,200);
 });
+

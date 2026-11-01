@@ -1,0 +1,6 @@
+.push-settings .section-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin-top:14px}
+.push-settings button{min-width:0;min-height:46px;padding:8px 6px;white-space:nowrap;font-size:14px}
+.push-settings button svg{width:18px;height:18px;flex-shrink:0}
+.push-settings #push-disable{grid-column:1/-1}
+.push-settings #push-status{font-size:13px;margin-top:8px;overflow-wrap:anywhere}
+

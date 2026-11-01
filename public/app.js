@@ -3,6 +3,7 @@ import {showSeasonSettings} from './season-settings.js';
 import {SOURCE_DEFAULTS} from './season-config.js';
 import {stageLabel,orderProgressLabels} from './order-status.js';
 import {installSwipe} from './swipe.js?v=20261101.11';
+import {createPushClient} from './push.js?v=20261101.12';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
 const icon=name=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -13,7 +14,7 @@ const progressBadges=o=>orderProgressLabels(o).map(p=>badge(p.text,p.good?'good'
 const names={overview:'營運總覽',orders:'顧客訂單',inventory:'庫存查詢',rules:'規則進度',notifications:'通知中心'};
 const eventIcon={order:'clipboard-list',change:'git-compare-arrows',shortage:'triangle-alert',rules:'book-open',activity:'package-check'};
 let data=null,events=[],token='',account='',demo=false,stale=false,busy=false,error='',page='overview',filter='all',search='',sort='new',timer;
-let selectedSeason=localStorage.getItem('d77-season')||'',requestEpoch=0;
+let selectedSeason=localStorage.getItem('d77-season')||'',requestEpoch=0,authGeneration=0;
 let seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};
 const demoEventStore=new Map();
 function demoSources(){return {revision:0,defaultSeason:'2026秋',canManage:true,seasons:['2026秋','2026春'].map(season=>({season,config:{season,spreadsheetId:'sample-book',catalogSheet:season+'品項統計',responseSheet:season+'預購回應',rulesFolderId:'sample-folder',...SOURCE_DEFAULTS,aliases:{},productColumns:{}},testedAt:new Date().toISOString()}))};}
@@ -88,11 +89,11 @@ function render(){
   $('#search')?.addEventListener('input',e=>{const cursor=e.target.selectionStart;search=e.target.value;render();const s=$('#search');s?.focus();try{s?.setSelectionRange(cursor,cursor);}catch{}window.scrollTo(0,position);});
   $('#sort')?.addEventListener('change',e=>{sort=e.target.value;render();});
 }
-async function api(path,body){
-  if(!config.apiBase||!token)throw new Error('請先完成登入與雲端設定');
+async function api(path,body,authToken=token){
+  if(!config.apiBase||!authToken)throw new Error('請先完成登入與雲端設定');
   const endpoint=new URL(config.apiBase.replace(/\/$/,'')+path);if(selectedSeason&&!path.startsWith('/seasons')&&path!=='/preferences')endpoint.searchParams.set('season',selectedSeason);
-  const response=await fetch(endpoint,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+token,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),cache:'no-store',signal:AbortSignal.timeout(60000)});
-  const result=await response.json();if(!response.ok){if(response.status===401){logout();throw new Error('登入已過期，請重新登入');}throw new Error(result.error||'讀取失敗');}return result;
+  const response=await fetch(endpoint,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+authToken,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),cache:'no-store',signal:AbortSignal.timeout(60000)});
+  const result=await response.json();if(!response.ok){if(response.status===401){if(authToken===token)logout(false);throw new Error('登入已過期，請重新登入');}throw new Error(result.error||'讀取失敗');}return result;
 }
 async function refresh(force=false){
   if(busy)return;const epoch=++requestEpoch;busy=true;chrome();
@@ -125,16 +126,57 @@ function productDetail(name,rulesOnly=false){const p=data.products.find(p=>p.nam
 }
 async function markRead(ids){if(!ids.length)return;if(!demo)await api('/read',{ids});events.forEach(e=>{if(ids.includes(e.id))e.read=true;});render();}
 async function settings(){
+  const settingsGeneration=authGeneration,settingsToken=token;
+  const sameSession=()=>authGeneration===settingsGeneration&&token===settingsToken;
+  const settingsApi=(path,body)=>{if(!sameSession())throw Error('登入狀態已變更');return api(path,body,settingsToken);};
+  const devicePush=createPushClient((path,body)=>api(path,body,settingsToken),globalThis,{isCurrent:sameSession});
   if(!data&&!token&&!demo){$('#login-status').textContent='請先使用授權的 Google 帳號登入。';return;}
   let value={preferences:{pushEnabled:false,quiet:true,quietStart:22,quietEnd:8,types:['order','change','shortage','rules','activity']},pushAvailable:false};
-  if(!demo)try{value=await api('/preferences');}catch(e){setError(e.message);return;}
+  if(!demo)try{value=await settingsApi('/preferences');}catch(e){setError(e.message);return;}
+  if(!sameSession())return;
   const p=value.preferences;
   openDialog('通知與帳號',`<p class="account">${demo?'示範模式':esc(account)}</p><form id="prefs"><label class="field">手機推播<input type="checkbox" name="pushEnabled" ${p.pushEnabled?'checked':''} ${value.pushAvailable?'':'disabled'}></label>${!value.pushAvailable?'<p class="read-only-note">尚未連接手機推播服務，通知中心仍可使用。</p>':''}<label class="field">勿擾時段<input type="checkbox" name="quiet" ${p.quiet?'checked':''}></label><div class="field"><span>開始／結束</span><span><select name="quietStart" aria-label="勿擾開始">${Array.from({length:24},(_,i)=>`<option ${i===p.quietStart?'selected':''} value="${i}">${i}:00</option>`).join('')}</select> — <select name="quietEnd" aria-label="勿擾結束">${Array.from({length:24},(_,i)=>`<option ${i===p.quietEnd?'selected':''} value="${i}">${i}:00</option>`).join('')}</select></span></div>${[['order','新訂單'],['change','訂單異動'],['shortage','缺貨提醒'],['rules','規則完成'],['activity','協作動態']].map(([type,label])=>`<label class="field">${label}<input type="checkbox" name="types" value="${type}" ${p.types.includes(type)?'checked':''}></label>`).join('')}<div class="section-actions"><button class="primary" type="submit">儲存設定</button><button id="logout" type="button">登出</button></div><p id="prefs-status" class="notice" role="status"></p></form>`);
   $('#prefs').onsubmit=async e=>{e.preventDefault();const form=new FormData(e.target);const body={pushEnabled:form.has('pushEnabled'),quiet:form.has('quiet'),quietStart:Number(form.get('quietStart')),quietEnd:Number(form.get('quietEnd')),types:form.getAll('types')};try{if(!demo)await api('/preferences',body);$('#prefs-status').textContent=demo?'示範設定，未寫入雲端':'設定已儲存';}catch(err){$('#prefs-status').textContent=err.message;}};
   $('#logout').onclick=logout;
+  const pushSection=document.createElement('section');pushSection.className='setting-section push-settings';
+  pushSection.innerHTML=`<h3>此裝置通知</h3><p id="push-status" role="status">正在讀取裝置狀態…</p><div class="section-actions"><button id="push-enable" type="button">${icon('bell-ring')}啟用通知</button><button id="push-test" type="button">${icon('send')}測試通知</button><button id="push-disable" type="button">${icon('bell-off')}停用此裝置</button></div>`;
+  $('#prefs').before(pushSection);
+  let pushBusy=false;
+  const pushButtons=()=>pushSection.querySelectorAll('button');
+  const showPushState=async()=>{
+    const state=demo?{available:false,supported:devicePush.supported(),subscribed:false}:await devicePush.status();
+    if(!sameSession())return;
+    pushSection.querySelector('#push-status').textContent=!state.supported?'此瀏覽器不支援通知':!state.available?'推播服務尚未就緒':state.subscribed?'此裝置已啟用通知':state.permission==='denied'?'通知權限已封鎖，請至瀏覽器網站設定調整':'此裝置尚未啟用通知';
+    pushSection.querySelector('#push-enable').disabled=!state.supported||!state.available||state.subscribed;
+    pushSection.querySelector('#push-test').disabled=!state.subscribed;
+    // Allow cleanup of a browser subscription left by another signed-in account.
+    pushSection.querySelector('#push-disable').disabled=!state.supported||!state.available;
+  };
+  const pushAction=async(action)=>{
+    if(pushBusy)return;pushBusy=true;pushButtons().forEach(b=>b.disabled=true);
+    const status=pushSection.querySelector('#push-status');status.textContent='處理中…';
+    try{
+      if(action==='enable'){
+        await devicePush.enable();if(!sameSession())return;
+        const checkbox=$('#prefs [name=pushEnabled]');checkbox.checked=true;
+        const form=new FormData($('#prefs'));
+        await settingsApi('/preferences',{pushEnabled:true,quiet:form.has('quiet'),quietStart:Number(form.get('quietStart')),quietEnd:Number(form.get('quietEnd')),types:form.getAll('types')});
+      }else if(action==='test')await devicePush.test();else await devicePush.disable();
+      await showPushState();if(action==='test')status.textContent='測試已交給推播服務，請查看手機通知';
+    }catch(e){try{await showPushState();}catch{}status.textContent=e.message;}
+    finally{pushBusy=false;}
+  };
+  pushSection.querySelector('#push-enable').onclick=()=>pushAction('enable');
+  pushSection.querySelector('#push-test').onclick=()=>pushAction('test');
+  pushSection.querySelector('#push-disable').onclick=()=>pushAction('disable');
+  pushButtons().forEach(b=>b.disabled=true);showPushState().catch(e=>{pushSection.querySelector('#push-status').textContent=e.message;});
   const form=$('#prefs');const section=document.createElement('section');section.className='setting-section';section.innerHTML=`<h3>季別與來源</h3><button id="season-manage" type="button" class="setting-link"><span>${icon('calendar-range')}${seasonState.canManage?'管理季別來源':'查看季別'}</span>${icon('chevron-right')}</button>`;form.before(section);$('#season-manage').onclick=manageSeasons;icons();
 }
-function logout(){requestEpoch++;busy=false;token='';account='';data=null;events=[];demo=false;seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};clearInterval(timer);$('#detail').close();$('#workspace').hidden=true;$('#nav').hidden=true;$('#login').hidden=false;$('#view').replaceChildren();$('#login-status').textContent='已登出';window.google?.accounts.id.disableAutoSelect();icons();}
+async function logout(cleanup=true){
+  const oldToken=token,remove=cleanup!==false&&!demo&&!!token;authGeneration++;
+  requestEpoch++;busy=false;token='';account='';data=null;events=[];demo=false;seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};clearInterval(timer);$('#detail').close();$('#workspace').hidden=true;$('#nav').hidden=true;$('#login').hidden=false;$('#view').replaceChildren();$('#login-status').textContent='已登出';window.google?.accounts.id.disableAutoSelect();icons();
+  if(remove)try{await createPushClient((path,body)=>api(path,body,oldToken)).disable();}catch{/* Browser unsubscribe still runs if the API is unavailable. */}
+}
 const demoButton=$('#demo-enter');
 if(demoButton)demoButton.onclick=()=>{demo=true;seasonState=demoSources();selectedSeason='2026秋';data=demoData(selectedSeason);events=seasonEvents(selectedSeason);error='';showWorkspace();};
 $('#season-select').onchange=e=>changeSeason(e.target.value);
@@ -161,7 +203,7 @@ async function initializeGoogle(){
   for(let n=0;n<40&&!window.google?.accounts?.id;n++)await new Promise(r=>setTimeout(r,250));
   if(!window.google?.accounts?.id){$('#login-status').textContent='Google 登入未載入，請檢查網路後重新整理。';return;}
   window.google.accounts.id.initialize({client_id:config.googleClientId,auto_select:false,callback:async result=>{
-    token=result.credential;demo=false;account='Google 授權成員';showWorkspace();await refresh();if(token){timer=setInterval(()=>{if(!document.hidden)refresh();},60000);}
+    authGeneration++;token=result.credential;demo=false;account='Google 授權成員';showWorkspace();await refresh();if(token){timer=setInterval(()=>{if(!document.hidden)refresh();},60000);}
   }});
   window.google.accounts.id.renderButton($('#google-login'),{theme:'outline',size:'large',text:'signin_with',locale:'zh_TW'});icons();
 }
