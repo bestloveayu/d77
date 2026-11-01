@@ -17,7 +17,7 @@ test('real library encrypts generic content and signs VAPID; redirects are forbi
  globalThis.fetch=async(url,options)=>{sent={url,options};return new Response(null,{status:201});};
  try{await sendBrowserPush(subscription,{VAPID_PUBLIC_KEY:pub,VAPID_PRIVATE_KEY:jwk.d});}
  finally{globalThis.fetch=original;}
- assert.equal(sent.options.redirect,'error');assert.equal(sent.options.method.toUpperCase(),'POST');
+ assert.equal(sent.options.redirect,'manual');assert.equal(sent.options.method.toUpperCase(),'POST');
  const headers=new Headers(sent.options.headers);assert.equal(headers.get('content-encoding'),'aes128gcm');assert.match(headers.get('authorization'),/^vapid /);
  assert.ok(sent.options.body.byteLength>100);assert.ok(!Buffer.from(sent.options.body).includes(Buffer.from('cloud-update')));
 });

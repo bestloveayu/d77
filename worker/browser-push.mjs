@@ -41,7 +41,7 @@ export async function sendBrowserPush(subscription,env){
   try{request=await buildPushPayload({data:'cloud-update',options:{ttl:300}},subscription,{
     subject:env.VAPID_SUBJECT||'https://bestloveayu.github.io/d77/',...keyValues(env)
   });}catch(e){throw fail('通知加密失敗 [PUSH_ENCRYPTION:'+safeErrorName(e)+']',503);}
-  try{return await fetch(subscription.endpoint,{...request,redirect:'error',signal:AbortSignal.timeout(10000)});}
+  try{return await fetch(subscription.endpoint,{...request,redirect:'manual',signal:AbortSignal.timeout(10000)});}
   catch(e){throw fail('推播服務連線失敗 [PUSH_NETWORK:'+safeErrorName(e)+']',503);}
 }
 export class PushService{
