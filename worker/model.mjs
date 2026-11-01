@@ -53,11 +53,12 @@ function quantity(value) {
   return valueN <= 999 ? valueN : null;
 }
 function headerProduct(header) {
+  const title = String(header).match(/【([^】]+)】/)?.[1];
   const bracket = [...String(header).matchAll(/\[([^\]]+)\]/g)].at(-1)?.[1];
-  const source = bracket || String(header);
+  const source = title ? String(header) : bracket || String(header);
   const price = source.match(/(?:[:：]|NT\$|\$)\s*([\d,]+(?:\.\d+)?)/) || source.match(/([\d,]+(?:\.\d+)?)\s*元/);
   if (!bracket && !price && !source.includes('【')) return null;
-  const name = source.match(/【([^】]+)】/)?.[1] || source.split(/\s+\d+\s*[-–~〜～]\s*\d+\s*人|\s+\d+\s*人|[:：]/)[0].trim();
+  const name = title || source.split(/\s+\d+\s*[-–~〜～]\s*\d+\s*人|\s+\d+\s*人|[:：]/)[0].trim();
   return { name, price: price ? n(price[1]) : null };
 }
 export async function parseResponses(rows, config, items) {
@@ -201,3 +202,4 @@ export async function changes(previous, next) {
     await add('activity',o.id,(o.actor||'成員')+'完成'+({shipment:'出貨登記',purchase:'下單',mail:'規則寄送'}[o.kind]||'協作操作'),'雲端已確認',{page:'notifications'},o.time);
   return events;
 }
+
