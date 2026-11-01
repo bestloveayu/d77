@@ -12,6 +12,10 @@ test('unsupported browsers and denied permissions never subscribe',async()=>{
  const unsupported=createPushClient(()=>{},{});assert.equal(unsupported.supported(),false);await assert.rejects(()=>unsupported.enable());
  const f=fixture('denied');await assert.rejects(()=>f.client.enable());assert.equal(f.requested,1);assert.equal(f.calls.length,0);
 });
+test('server key-health failure is displayed rather than a generic retry suggestion',async()=>{
+ const f=fixture();const client=createPushClient(async()=>({available:false,health:{message:'推播金鑰無法使用 [PUSH_KEYS_INVALID]'}}),f.browser);
+ await assert.rejects(()=>client.enable(),/PUSH_KEYS_INVALID/);
+});
 test('enable, test, disable and logout cleanup use only current subscription',async()=>{
  const f=fixture();await f.client.enable();assert.equal(f.requested,1);assert.equal(f.calls.at(-1)[1].op,'register');
  await f.client.test();assert.equal(f.calls.at(-1)[1].op,'test');

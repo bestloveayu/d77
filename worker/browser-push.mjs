@@ -5,6 +5,22 @@ import {notificationTypes} from '../public/order-followup.js';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const defaults={pushEnabled:false,quiet:true,quietStart:22,quietEnd:8,types:notificationTypes};
 export const defaultPreferences=()=>({...defaults,types:[...defaults.types]});
+const keyValues=env=>({publicKey:String(env.VAPID_PUBLIC_KEY||'').trim(),privateKey:String(env.VAPID_PRIVATE_KEY||'').trim()});
+export async function pushKeyHealth(env){
+  try{
+    const {publicKey,privateKey}=keyValues(env);
+    const raw=Uint8Array.from(atob(publicKey.replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0));
+    if(raw.length!==65||raw[0]!==4||!/^[\w-]{43}$/.test(privateKey))return {ok:false,message:'推播金鑰格式不正確 [PUSH_KEYS_FORMAT]'};
+    const enc=bytes=>btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    const key=await crypto.subtle.importKey('jwk',{kty:'EC',crv:'P-256',x:enc(raw.slice(1,33)),y:enc(raw.slice(33)),d:privateKey},{name:'ECDSA',namedCurve:'P-256'},false,['sign']);
+    const pub=await crypto.subtle.importKey('raw',raw,{name:'ECDSA',namedCurve:'P-256'},false,['verify']);
+    const data=new TextEncoder().encode('d77-push-health');
+    const signature=await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},key,data);
+    const ok=await crypto.subtle.verify({name:'ECDSA',hash:'SHA-256'},pub,signature,data);
+    return {ok,message:ok?'推播金鑰核對正常':'推播公私鑰不一致 [PUSH_KEYS_MISMATCH]'};
+  }catch{return {ok:false,message:'推播金鑰無法使用 [PUSH_KEYS_INVALID]'};}
+}
+const safeErrorName=e=>['DataError','OperationError','NotSupportedError','InvalidAccessError','TypeError','TimeoutError','AbortError'].includes(e?.name)?e.name:'Error';
 export function validateSubscription(value){
   let url;try{url=new URL(value?.endpoint);}catch{throw fail('裝置訂閱格式不正確');}
   const allowed=(url.hostname==='fcm.googleapis.com'&&/^\/fcm\/send\/[\w:-]+$/.test(url.pathname))||
@@ -21,17 +37,20 @@ export function eligibleEvents(events,prefs,created,now=Date.now()){
   return events.filter(e=>prefs.types?.includes(e.type)&&Date.parse(e.time)>created);
 }
 export async function sendBrowserPush(subscription,env){
-  const request=await buildPushPayload({data:'cloud-update',options:{ttl:300}},subscription,{
-    subject:env.VAPID_SUBJECT||'https://bestloveayu.github.io/d77/',publicKey:env.VAPID_PUBLIC_KEY,privateKey:env.VAPID_PRIVATE_KEY
-  });
-  return fetch(subscription.endpoint,{...request,redirect:'error',signal:AbortSignal.timeout(10000)});
+  let request;
+  try{request=await buildPushPayload({data:'cloud-update',options:{ttl:300}},subscription,{
+    subject:env.VAPID_SUBJECT||'https://bestloveayu.github.io/d77/',...keyValues(env)
+  });}catch(e){throw fail('通知加密失敗 [PUSH_ENCRYPTION:'+safeErrorName(e)+']',503);}
+  try{return await fetch(subscription.endpoint,{...request,redirect:'error',signal:AbortSignal.timeout(10000)});}
+  catch(e){throw fail('推播服務連線失敗 [PUSH_NETWORK:'+safeErrorName(e)+']',503);}
 }
 export class PushService{
   constructor(storage,env,send=sendBrowserPush){this.storage=storage;this.env=env;this.send=send;}
   available(){return !!(this.env.VAPID_PUBLIC_KEY&&this.env.VAPID_PRIVATE_KEY);}
   async status(email){
     const owner=await digest(email.toLowerCase()),rows=await this.storage.list({prefix:'webpush:device:'});
-    return {available:this.available(),publicKey:this.available()?this.env.VAPID_PUBLIC_KEY:null,devices:[...rows.values()].filter(r=>r.owner===owner).length};
+    const health=this.available()?await pushKeyHealth(this.env):{ok:false,message:'推播服務尚未設定'};
+    return {available:health.ok,publicKey:health.ok?keyValues(this.env).publicKey:null,health,devices:[...rows.values()].filter(r=>r.owner===owner).length};
   }
   async device(email,body){
     if(!this.available())throw fail('瀏覽器推播尚未啟用',503);
@@ -49,9 +68,9 @@ export class PushService{
     if(!owned)throw fail('請先在此裝置啟用通知',409);
     if(Date.now()-old.lastTest<60000)throw fail('請稍候一分鐘再測試',429);
     old.lastTest=Date.now();await this.storage.put(key,old);
-    let response;try{response=await this.send(subscription,this.env);}catch{throw fail('測試通知未送達，請稍後重試',503);}
+    let response;try{response=await this.send(subscription,this.env);}catch(e){throw fail(e.status===503?e.message:'測試通知傳送失敗 [PUSH_SEND_ERROR]',503);}
     if([404,410].includes(response.status))await this.storage.delete(key);
-    if(!response.ok)throw fail('推播服務未接受測試，請停用後重新啟用',503);
+    if(!response.ok)throw fail([404,410].includes(response.status)?'此裝置訂閱已失效，請停用後重新啟用 [PUSH_EXPIRED]':`推播服務拒絕測試 [PUSH_HTTP_${response.status}]`,503);
     return {ok:true};
   }
   async deliver(events,preferences){

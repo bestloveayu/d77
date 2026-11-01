@@ -9,6 +9,7 @@ const {spawn}=require('node:child_process');
   await page.goto('http://127.0.0.1:8791/');await page.locator('#demo-enter').click();
   assert((await page.title()).includes('雲端管理'));
   assert.equal(await page.locator('.brand small').count(),0);
+  assert.deepEqual(await page.locator('#view>section .section-heading h2').allTextContents(),['最新動態','待辦提醒','2026秋 · 本季收支','缺貨清單']);
   for(const width of [320,390,1440]){
     await page.setViewportSize({width,height:900});await page.locator('.finance-overview').waitFor();
     assert.equal(await page.locator('.finance-overview>div').count(),4);

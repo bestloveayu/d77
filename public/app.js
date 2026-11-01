@@ -3,7 +3,7 @@ import {showSeasonSettings} from './season-settings.js';
 import {SOURCE_DEFAULTS} from './season-config.js';
 import {stageLabel,orderProgressLabels} from './order-status.js';
 import {installSwipe} from './swipe.js?v=20261101.15';
-import {createPushClient} from './push.js?v=20261101.12';
+import {createPushClient} from './push.js?v=20261102.1';
 import {classifyFollowUp,needsAttention,notificationChoices,notificationTypes} from './order-followup.js?v=20261101.16';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
 const icon=name=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
@@ -46,8 +46,8 @@ function overview(){
   const low=data.products.filter(p=>p.shortage>0).slice(0,4);
   const due=data.finance.eastDue;
   const dueText=due==null?'待核對':Math.round(due*100)===0?'已平衡':due<0?'于應給東':'東應給于';
-  return `<section class="section overview-finance" aria-label="本季收支">${heading(esc(data.season)+' · 本季收支')}<div class="finance finance-overview"><div><small>收入</small><strong>${money(data.finance.income)}</strong></div><div><small>成本</small><strong>${money(data.finance.cost)}</strong></div><div><small>結餘</small><strong>${money(data.finance.profit)}</strong></div><div class="season-due"><small>${dueText}</small><strong>${due==null?'待核對':money(Math.abs(due))}</strong></div></div></section>
-  <div class="metrics">${stats.map(([i,label,count,kind])=>`<div class="metric ${kind}">${icon(i)}<div><span class="metric-label">${label}</span><strong>${count}</strong></div></div>`).join('')}</div>
+  const finance=`<section class="section overview-finance" aria-label="本季收支">${heading(esc(data.season)+' · 本季收支')}<div class="finance finance-overview"><div><small>收入</small><strong>${money(data.finance.income)}</strong></div><div><small>成本</small><strong>${money(data.finance.cost)}</strong></div><div><small>結餘</small><strong>${money(data.finance.profit)}</strong></div><div class="season-due"><small>${dueText}</small><strong>${due==null?'待核對':money(Math.abs(due))}</strong></div></div></section>`;
+  return `<section class="section">${heading('最新動態',`<button class="text-button" data-go="notifications">查看全部 ${icon('chevron-right')}</button>`)}${eventList(events.slice(0,3))}</section>
   <section class="section">${heading('待辦提醒')}
     <button class="alert-row warn" data-go="orders" data-filter="registration">${icon('clipboard-list')}<span class="text"><strong>${registration} 筆訂單待出貨登記</strong><small>已下單，尚未完成銷貨收入／出貨登記</small></span>${icon('chevron-right')}</button>
     <button class="alert-row" data-go="orders" data-filter="rules">${icon('mail')}<span class="text"><strong>${rulesPending} 筆訂單待寄規則</strong><small>已完成出貨登記，需要寄送的規則尚未寄齊</small></span>${icon('chevron-right')}</button>
@@ -55,8 +55,9 @@ function overview(){
     <button class="alert-row" data-go="rules" data-filter="ready">${icon('book-open-check')}<span class="text"><strong>${s.rulesReady} 款中文規則已備齊</strong><small>查看訂購顧客與規則寄送狀態</small></span>${icon('chevron-right')}</button>
     ${s.unknownStock?`<button class="alert-row warn" data-go="inventory" data-filter="unknown">${icon('circle-help')}<span class="text"><strong>${s.unknownStock} 款出貨證據待確認</strong><small>未將未知狀態當成零或缺貨</small></span>${icon('chevron-right')}</button>`:''}
   </section>
+  ${finance}
   <section class="section">${heading('缺貨清單',`<button class="text-button" data-go="inventory">查看全部 ${icon('chevron-right')}</button>`)}${stockTable(low)}</section>
-  <section class="section">${heading('最新動態',`<button class="text-button" data-go="notifications">查看全部 ${icon('chevron-right')}</button>`)}${eventList(events.slice(0,3))}</section>`;
+  <div class="metrics">${stats.map(([i,label,count,kind])=>`<div class="metric ${kind}">${icon(i)}<div><span class="metric-label">${label}</span><strong>${count}</strong></div></div>`).join('')}</div>`;
 }
 function filters(placeholder,options,sortOptions,className=''){return `<div class="filters"><label class="search">${icon('search')}<input id="search" type="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${esc(search)}" autocomplete="off"></label>${sortOptions?`<select id="sort" aria-label="排序">${sortOptions.map(([value,label])=>`<option value="${value}" ${sort===value?'selected':''}>${label}</option>`).join('')}</select>`:''}</div><div class="segments ${className}">${options.map(([value,label])=>`<button data-filter="${value}" class="${filter===value?'active':''}" aria-pressed="${filter===value}">${label}</button>`).join('')}</div>`;}
 function parseTime(value){
@@ -172,7 +173,7 @@ async function settings(){
   const showPushState=async()=>{
     const state=demo?{available:false,supported:devicePush.supported(),subscribed:false}:await devicePush.status();
     if(!sameSession())return;
-    pushSection.querySelector('#push-status').textContent=!state.supported?'此瀏覽器不支援通知':!state.available?'推播服務尚未就緒':state.subscribed?'此裝置已啟用通知':state.permission==='denied'?'通知權限已封鎖，請至瀏覽器網站設定調整':'此裝置尚未啟用通知';
+    pushSection.querySelector('#push-status').textContent=!state.supported?'此瀏覽器不支援通知':!state.available?(state.health?.message||'推播服務尚未就緒'):state.subscribed?'此裝置已啟用通知':state.permission==='denied'?'通知權限已封鎖，請至瀏覽器網站設定調整':'此裝置尚未啟用通知';
     pushSection.querySelector('#push-enable').disabled=!state.supported||!state.available||state.subscribed;
     pushSection.querySelector('#push-test').disabled=!state.subscribed;
     // Allow cleanup of a browser subscription left by another signed-in account.

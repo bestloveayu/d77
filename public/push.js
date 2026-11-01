@@ -16,7 +16,7 @@ export function createPushClient(api,browser=globalThis,{isCurrent=()=>true}={})
     const permission=await browser.Notification.requestPermission();
     check();
     if(permission!=='granted')throw Error('尚未允許通知，請到瀏覽器網站權限中調整');
-    const server=await api('/push/status');check();if(!server.available)throw Error('推播服務尚未就緒');
+    const server=await api('/push/status');check();if(!server.available)throw Error(server.health?.message||'推播服務尚未就緒');
     await browser.navigator.serviceWorker.register(new URL('./sw.js',import.meta.url),{scope:new URL('./',import.meta.url).href,updateViaCache:'none'});
     const reg=await browser.navigator.serviceWorker.ready;check();
     const old=await reg.pushManager.getSubscription();

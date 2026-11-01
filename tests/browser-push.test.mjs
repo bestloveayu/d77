@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PushService,validateSubscription,eligibleEvents,sendBrowserPush} from '../worker/browser-push.mjs';
+import {PushService,validateSubscription,eligibleEvents,sendBrowserPush,pushKeyHealth} from '../worker/browser-push.mjs';
+test('key health identifies a mismatched VAPID pair without exposing key material',async()=>{
+ const a=generateKeyPairSync('ec',{namedCurve:'prime256v1'}).privateKey.export({format:'jwk'}),b=generateKeyPairSync('ec',{namedCurve:'prime256v1'}).privateKey.export({format:'jwk'});
+ const publicKey=Buffer.concat([Buffer.from([4]),Buffer.from(a.x,'base64url'),Buffer.from(a.y,'base64url')]).toString('base64url');
+ assert.equal((await pushKeyHealth({VAPID_PUBLIC_KEY:publicKey,VAPID_PRIVATE_KEY:a.d})).ok,true);
+ const invalid=await pushKeyHealth({VAPID_PUBLIC_KEY:publicKey,VAPID_PRIVATE_KEY:b.d});assert.equal(invalid.ok,false);assert(!JSON.stringify(invalid).includes(b.d));
+});
 import {generateKeyPairSync,createECDH,randomBytes} from 'node:crypto';
 const sub=(id='one')=>({endpoint:'https://fcm.googleapis.com/fcm/send/'+id,keys:{p256dh:'B'+ 'A'.repeat(86),auth:'A'.repeat(22)}});
 test('real library encrypts generic content and signs VAPID; redirects are forbidden',async()=>{
