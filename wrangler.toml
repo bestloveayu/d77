@@ -5,8 +5,8 @@ compatibility_date = "2026-10-01"
 [vars]
 # Replace all placeholders before deployment. No production credentials here.
 ALLOWED_ORIGIN = "https://bestloveayu.github.io"
-GOOGLE_CLIENT_ID = "REPLACE.apps.googleusercontent.com"
-SHEET_CONFIG = '{"spreadsheetId":"REPLACE_SPREADSHEET_ID","season":"2026秋","catalogSheet":"REPLACE_品項統計分頁名稱","responseSheet":"2026秋預購回應","ledgerSheet":"金流進出貨總表","teamSheet":"_collaboration_v1","documentsSheet":"_collaboration_orders_v1","rulesFolderId":"REPLACE_中文規則資料夾ID","productColumns":{},"aliases":{}}'
+GOOGLE_CLIENT_ID = "577045598718-p4gjbi4dpf51mud9jul191p2ajfe9j43.apps.googleusercontent.com"
+# SHEET_CONFIG is configured as a private Worker secret.
 
 [[durable_objects.bindings]]
 name = "BOARD"
@@ -18,3 +18,4 @@ new_sqlite_classes = ["BoardStore"]
 
 [triggers]
 crons = ["*/5 * * * *"]
+
