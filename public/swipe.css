@@ -1,6 +1,6 @@
-.swipe-stage{position:fixed;z-index:8;overflow:hidden;pointer-events:none;background:var(--bg);contain:layout paint}
-.swipe-outgoing,.swipe-incoming{position:absolute;inset:0 auto auto 0;width:100%;min-height:100%;background:var(--bg);will-change:transform;backface-visibility:hidden}
-.swipe-incoming{box-shadow:0 0 18px #10221d24}
+.swipe-stage{position:fixed;z-index:8;overflow:hidden;pointer-events:none;contain:layout paint}
+.swipe-outgoing{will-change:transform;backface-visibility:hidden}
+.swipe-incoming{position:absolute;inset:0 auto auto 0;width:100%;min-height:100%;background:var(--bg);will-change:transform;backface-visibility:hidden}
 .swipe-stage *{pointer-events:none!important}
 @media(prefers-reduced-motion:reduce){.swipe-stage{display:none}}
 

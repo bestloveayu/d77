@@ -1,5 +1,12 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {swipePage,dragOffset} from '../public/swipe.js';
+import {swipePage,dragOffset,commitDrag} from '../public/swipe.js';
+test('quick flicks use momentum while held short drags snap back',()=>{
+  assert.equal(commitDrag(-30,-.7,390),true);
+  assert.equal(commitDrag(-30,0,390),false);
+  assert.equal(commitDrag(-30,.7,390),false);
+  assert.equal(commitDrag(-120,0,390),true);
+  assert.equal(commitDrag(8,1,390),false);
+});
 test('drag position follows the finger and stays within one page width',()=>{
   assert.equal(dragOffset(-120,390),-120);assert.equal(dragOffset(90,390),90);
   assert.equal(dragOffset(500,390),390);assert.equal(dragOffset(-500,390),-390);

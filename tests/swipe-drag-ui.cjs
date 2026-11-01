@@ -14,9 +14,14 @@ const assert=require('node:assert/strict');const {spawn}=require('node:child_pro
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
  await page.screenshot({path:'test-results/swipe-drag-midpoint.png'});
  await touch('touchend',150);await page.waitForURL('**/#orders');await page.locator('.swipe-stage').waitFor({state:'detached'});
- await touch('touchstart',220);await touch('touchmove',190);await touch('touchend',190);await page.locator('.swipe-stage').waitFor({state:'detached'});assert(page.url().endsWith('#orders'),'short drag snaps back');
+ await touch('touchstart',220);await touch('touchmove',190);await page.waitForTimeout(180);await touch('touchend',190);await page.locator('.swipe-stage').waitFor({state:'detached'});assert(page.url().endsWith('#orders'),'held short drag snaps back');
  await touch('touchstart',220);await touch('touchmove',215,570);assert.equal(await page.locator('.swipe-stage').count(),0,'vertical scrolling remains native');await touch('touchend',215,570);
  await touch('touchstart',220);await touch('touchmove',100);await touch('touchcancel',100);await page.locator('.swipe-stage').waitFor({state:'detached'});assert(page.url().endsWith('#orders'));
+ await page.locator('#view').evaluate(el=>{for(const [type,x] of [['touchstart',220],['touchmove',190],['touchend',185]]){const e=new Event(type,{bubbles:true,cancelable:true});Object.defineProperty(e,'touches',{value:type==='touchend'?[]:[{clientX:x,clientY:440}]});Object.defineProperty(e,'changedTouches',{value:[{clientX:x,clientY:440}]});el.dispatchEvent(e);}});
+ await page.waitForURL('**/#inventory');await page.locator('.swipe-stage').waitFor({state:'detached'});
+ await touch('touchstart',270);await touch('touchmove',150);await touch('touchend',150);await page.setViewportSize({width:400,height:844});await page.locator('.swipe-stage').waitFor({state:'detached'});
+ assert.equal(await page.locator('#view').evaluate(el=>el.getAnimations().length),0,'interrupted transitions must not keep a stale transform');
+ await page.setViewportSize({width:390,height:844});
  await page.locator('#nav [data-page=notifications]').click();await touch('touchstart',270);await touch('touchmove',150);await touch('touchend',150);await page.waitForURL('**/#overview');await page.locator('.swipe-stage').waitFor({state:'detached'});
  await page.emulateMedia({reducedMotion:'reduce'});await touch('touchstart',120);await touch('touchmove',250);assert.equal(await page.locator('.swipe-stage').count(),0);await touch('touchend',250);await page.waitForURL('**/#notifications');
  assert.deepEqual(errors,[]);console.log('PASS finger-tracking preview, commit, snap-back, cancel, vertical scroll, circular wrap and reduced motion');
