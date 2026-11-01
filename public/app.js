@@ -4,15 +4,17 @@ import {SOURCE_DEFAULTS} from './season-config.js';
 import {stageLabel,orderProgressLabels} from './order-status.js';
 import {installSwipe} from './swipe.js?v=20261101.15';
 import {createPushClient} from './push.js?v=20261101.12';
+import {classifyFollowUp,needsAttention,notificationChoices,notificationTypes} from './order-followup.js?v=20261101.16';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
 const icon=name=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>n==null?'待核對':'$'+Number(n).toLocaleString('zh-TW');
 const num=n=>n==null?'—':n;
 const badge=(text,kind='')=>`<span class="badge ${kind}">${esc(text)}</span>`;
-const progressBadges=o=>orderProgressLabels(o).map(p=>badge(p.text,p.good?'good':'')).join('');
+const progressBadges=o=>{const task=followUp(o);return orderProgressLabels(o).map(p=>badge(p.text,p.good?'good':'')).join('')+(['registration','rules'].includes(task.kind)?badge(task.label,'warn'):task.kind==='review'?badge(task.reason||task.label,'warn'):'');};
 const names={overview:'營運總覽',orders:'顧客訂單',inventory:'庫存查詢',rules:'規則進度',notifications:'通知中心'};
-const eventIcon={order:'clipboard-list',change:'git-compare-arrows',shortage:'triangle-alert',rules:'book-open',activity:'package-check'};
+const eventIcon={order:'clipboard-list',change:'git-compare-arrows',shortage:'triangle-alert',rules:'book-open',activity:'package-check',registration:'clipboard-clock','rules-pending':'mail'};
+const followUp=o=>o.followUp||classifyFollowUp(o);
 let data=null,events=[],token='',account='',demo=false,stale=false,busy=false,error='',page='overview',filter='all',search='',sort='new',timer;
 let selectedSeason=localStorage.getItem('d77-season')||'',requestEpoch=0,authGeneration=0,composingSearch=false;
 let seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};
@@ -39,13 +41,16 @@ function chrome(){
 function heading(title,action){return `<div class="section-heading"><h2>${title}</h2>${action||''}</div>`;}
 function overview(){
   const s=data.summary;
-  const stats=[['clipboard-list','訂單數',s.orders,''],['clock-3','待處理',s.attention,''],['package-open','缺貨品項',s.shortages,'warn'],['book-open-check','規則已備齊',`${s.rulesReady}/${s.rulesTotal}`,'']];
+  const registration=data.orders.filter(o=>followUp(o).kind==='registration').length,rulesPending=data.orders.filter(o=>followUp(o).kind==='rules').length;
+  const stats=[['clipboard-list','訂單數',s.orders,''],['clock-3','待處理',data.orders.filter(needsAttention).length,''],['package-open','缺貨品項',s.shortages,'warn'],['book-open-check','規則已備齊',`${s.rulesReady}/${s.rulesTotal}`,'']];
   const low=data.products.filter(p=>p.shortage>0).slice(0,4);
   const due=data.finance.eastDue;
   const dueText=due==null?'待核對':Math.round(due*100)===0?'已平衡':due<0?'于應給東':'東應給于';
   return `<section class="section overview-finance" aria-label="本季收支">${heading(esc(data.season)+' · 本季收支')}<div class="finance finance-overview"><div><small>收入</small><strong>${money(data.finance.income)}</strong></div><div><small>成本</small><strong>${money(data.finance.cost)}</strong></div><div><small>結餘</small><strong>${money(data.finance.profit)}</strong></div><div class="season-due"><small>${dueText}</small><strong>${due==null?'待核對':money(Math.abs(due))}</strong></div></div></section>
   <div class="metrics">${stats.map(([i,label,count,kind])=>`<div class="metric ${kind}">${icon(i)}<div><span class="metric-label">${label}</span><strong>${count}</strong></div></div>`).join('')}</div>
   <section class="section">${heading('待辦提醒')}
+    <button class="alert-row warn" data-go="orders" data-filter="registration">${icon('clipboard-clock')}<span class="text"><strong>${registration} 筆訂單待出貨登記</strong><small>已下單，尚未完成銷貨收入／出貨登記</small></span>${icon('chevron-right')}</button>
+    <button class="alert-row" data-go="orders" data-filter="rules">${icon('mail')}<span class="text"><strong>${rulesPending} 筆訂單待寄規則</strong><small>已完成出貨登記，需要寄送的規則尚未寄齊</small></span>${icon('chevron-right')}</button>
     <button class="alert-row warn" data-go="inventory" data-filter="shortage">${icon('triangle-alert')}<span class="text"><strong>${s.shortages} 款遊戲待補貨</strong><small>依已確認未出貨需求與帳面庫存計算</small></span>${icon('chevron-right')}</button>
     <button class="alert-row" data-go="rules" data-filter="ready">${icon('book-open-check')}<span class="text"><strong>${s.rulesReady} 款中文規則已備齊</strong><small>查看訂購顧客與規則寄送狀態</small></span>${icon('chevron-right')}</button>
     ${s.unknownStock?`<button class="alert-row warn" data-go="inventory" data-filter="unknown">${icon('circle-help')}<span class="text"><strong>${s.unknownStock} 款出貨證據待確認</strong><small>未將未知狀態當成零或缺貨</small></span>${icon('chevron-right')}</button>`:''}
@@ -53,7 +58,7 @@ function overview(){
   <section class="section">${heading('缺貨清單',`<button class="text-button" data-go="inventory">查看全部 ${icon('chevron-right')}</button>`)}${stockTable(low)}</section>
   <section class="section">${heading('最新動態',`<button class="text-button" data-go="notifications">查看全部 ${icon('chevron-right')}</button>`)}${eventList(events.slice(0,3))}</section>`;
 }
-function filters(placeholder,options,sortOptions){return `<div class="filters"><label class="search">${icon('search')}<input id="search" type="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${esc(search)}" autocomplete="off"></label>${sortOptions?`<select id="sort" aria-label="排序">${sortOptions.map(([value,label])=>`<option value="${value}" ${sort===value?'selected':''}>${label}</option>`).join('')}</select>`:''}</div><div class="segments">${options.map(([value,label])=>`<button data-filter="${value}" class="${filter===value?'active':''}" aria-pressed="${filter===value}">${label}</button>`).join('')}</div>`;}
+function filters(placeholder,options,sortOptions,className=''){return `<div class="filters"><label class="search">${icon('search')}<input id="search" type="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${esc(search)}" autocomplete="off"></label>${sortOptions?`<select id="sort" aria-label="排序">${sortOptions.map(([value,label])=>`<option value="${value}" ${sort===value?'selected':''}>${label}</option>`).join('')}</select>`:''}</div><div class="segments ${className}">${options.map(([value,label])=>`<button data-filter="${value}" class="${filter===value?'active':''}" aria-pressed="${filter===value}">${label}</button>`).join('')}</div>`;}
 function parseTime(value){
   let text=String(value||'').replace(/上午\s*/,'AM ').replace(/下午\s*/,'PM ');
   const m=String(value||'').match(/(\d{4})\/(\d+)\/(\d+)\s*(上午|下午)?\s*(\d+):(\d+)(?::(\d+))?/);
@@ -62,9 +67,10 @@ function parseTime(value){
 }
 function ordersView(){
   let rows=data.orders.filter(o=>(o.name+' '+(o.nickname||'')+' '+o.lines.map(l=>l.name).join(' ')).toLowerCase().includes(search.toLowerCase()));
-  if(filter==='pending')rows=rows.filter(o=>o.status!=='已出貨');if(filter==='done')rows=rows.filter(o=>o.status==='已出貨');
+  if(filter==='pending')rows=rows.filter(needsAttention);if(filter==='done')rows=rows.filter(o=>o.status==='已出貨');
+  if(['registration','rules','review'].includes(filter))rows=rows.filter(o=>followUp(o).kind===filter);
   rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):(parseTime(a.time)-parseTime(b.time))*(sort==='old'?1:-1));
-  return filters('搜尋顧客、品項',[['all','全部'],['pending','待處理'],['done','已出貨']],[['new','填單時間新到舊'],['old','填單時間舊到新'],['name','依姓名']])+`<div class="count-line"><span>共 ${rows.length} 筆訂單</span><span>依原始訂單分列</span></div>`+
+  return filters('搜尋顧客、品項',[['all','全部'],['registration','待出貨登記'],['rules','待寄規則'],['pending','待處理'],['done','已出貨'],['review','待核對']],[['new','填單時間新到舊'],['old','填單時間舊到新'],['name','依姓名']],'order-followup-filters')+`<div class="count-line"><span>共 ${rows.length} 筆訂單</span><span>依原始訂單分列</span></div>`+
   (rows.map(o=>`<article class="order"><div class="order-top"><div><button class="order-name" data-order="${esc(o.id)}">${esc(o.name||'姓名待核對')}${icon('chevron-right')}</button><p class="order-meta">${esc(o.nickname||'')}${o.nickname?' · ':''}${o.manual?'手動訂單':esc(o.time||'填單時間未記錄')}</p></div><strong>${money(o.total)}</strong></div><div class="badges">${badge(o.status,o.status==='已出貨'?'good':o.status==='待核對'?'bad':'warn')}${progressBadges(o)}${o.manual?badge('手動追加'):''}${o.phoneSuffix?badge('手機末碼 '+o.phoneSuffix):''}</div><div class="order-items">${o.lines.map(l=>`<span class="order-item">${icon('package')}${esc(l.name)} × ${num(l.quantity)}</span>`).join('')}</div></article>`).join('')||empty('沒有符合條件的訂單'));
 }
 function stockTable(rows,expanded=false){
@@ -145,11 +151,17 @@ async function settings(){
   const settingsApi=(path,body)=>{if(!sameSession())throw Error('登入狀態已變更');return api(path,body,settingsToken);};
   const devicePush=createPushClient((path,body)=>api(path,body,settingsToken),globalThis,{isCurrent:sameSession});
   if(!data&&!token&&!demo){$('#login-status').textContent='請先使用授權的 Google 帳號登入。';return;}
-  let value={preferences:{pushEnabled:false,quiet:true,quietStart:22,quietEnd:8,types:['order','change','shortage','rules','activity']},pushAvailable:false};
+  let value={preferences:{pushEnabled:false,quiet:true,quietStart:22,quietEnd:8,types:notificationTypes},pushAvailable:false};
   if(!demo)try{value=await settingsApi('/preferences');}catch(e){setError(e.message);return;}
   if(!sameSession())return;
   const p=value.preferences;
   openDialog('通知與帳號',`<p class="account">${demo?'示範模式':esc(account)}</p><form id="prefs"><label class="field">手機推播<input type="checkbox" name="pushEnabled" ${p.pushEnabled?'checked':''} ${value.pushAvailable?'':'disabled'}></label>${!value.pushAvailable?'<p class="read-only-note">尚未連接手機推播服務，通知中心仍可使用。</p>':''}<label class="field">勿擾時段<input type="checkbox" name="quiet" ${p.quiet?'checked':''}></label><div class="field"><span>開始／結束</span><span><select name="quietStart" aria-label="勿擾開始">${Array.from({length:24},(_,i)=>`<option ${i===p.quietStart?'selected':''} value="${i}">${i}:00</option>`).join('')}</select> — <select name="quietEnd" aria-label="勿擾結束">${Array.from({length:24},(_,i)=>`<option ${i===p.quietEnd?'selected':''} value="${i}">${i}:00</option>`).join('')}</select></span></div>${[['order','新訂單'],['change','訂單異動'],['shortage','缺貨提醒'],['rules','規則完成'],['activity','協作動態']].map(([type,label])=>`<label class="field">${label}<input type="checkbox" name="types" value="${type}" ${p.types.includes(type)?'checked':''}></label>`).join('')}<div class="section-actions"><button class="primary" type="submit">儲存設定</button><button id="logout" type="button">登出</button></div><p id="prefs-status" class="notice" role="status"></p></form>`);
+  for(const [type,label] of notificationChoices){
+    if($('#prefs').querySelector(`input[name=types][value="${type}"]`))continue;
+    const row=document.createElement('label');row.className='field';row.append(document.createTextNode(label));
+    const input=document.createElement('input');input.type='checkbox';input.name='types';input.value=type;input.checked=p.types.includes(type);row.append(input);
+    $('#prefs .section-actions').before(row);
+  }
   $('#prefs').onsubmit=async e=>{e.preventDefault();const form=new FormData(e.target);const body={pushEnabled:form.has('pushEnabled'),quiet:form.has('quiet'),quietStart:Number(form.get('quietStart')),quietEnd:Number(form.get('quietEnd')),types:form.getAll('types')};try{if(!demo)await api('/preferences',body);$('#prefs-status').textContent=demo?'示範設定，未寫入雲端':'設定已儲存';}catch(err){$('#prefs-status').textContent=err.message;}};
   $('#logout').onclick=logout;
   const pushSection=document.createElement('section');pushSection.className='setting-section push-settings';

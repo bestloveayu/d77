@@ -2,6 +2,7 @@ import { authenticate, collect } from './google.mjs';
 import { changes, digest } from './model.mjs';
 import {SeasonRegistry} from './seasons.mjs';
 import {PushService,defaultPreferences} from './browser-push.mjs';
+import {notificationTypes} from '../public/order-followup.js';
 const json=(body,status=200,headers={})=>Response.json(body,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
 export const seasonObjectName=entry=>'season:'+entry.season+':'+entry.configDigest;
 async function seasonTarget(env,season,user){
@@ -151,7 +152,7 @@ export class BoardStore {
       const key='prefs:'+await digest(email.toLowerCase());
       if(request.method==='POST'){
         const body=await request.json();
-        if(typeof body.pushEnabled!=='boolean'||typeof body.quiet!=='boolean'||![body.quietStart,body.quietEnd].every(x=>Number.isInteger(x)&&x>=0&&x<=23)||!Array.isArray(body.types)||body.types.some(t=>!['order','change','shortage','rules','activity'].includes(t)))return json({error:'通知設定格式不正確'},400);
+        if(typeof body.pushEnabled!=='boolean'||typeof body.quiet!=='boolean'||![body.quietStart,body.quietEnd].every(x=>Number.isInteger(x)&&x>=0&&x<=23)||!Array.isArray(body.types)||body.types.some(t=>!notificationTypes.includes(t)))return json({error:'通知設定格式不正確'},400);
         await this.ctx.storage.put(key,{pushEnabled:body.pushEnabled,quiet:body.quiet,quietStart:body.quietStart,quietEnd:body.quietEnd,types:body.types});
       }
       let targets={};try{targets=JSON.parse(this.env.NTFY_TARGETS||'{}');}catch{}

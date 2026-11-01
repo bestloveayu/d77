@@ -1,0 +1,4 @@
+.order-followup-filters{display:grid;grid-template-columns:repeat(6,minmax(0,1fr))}
+.order-followup-filters button{min-width:0;white-space:nowrap}
+@media(max-width:620px){.order-followup-filters{grid-template-columns:repeat(3,minmax(0,1fr))}.order-followup-filters button{padding:10px 5px;font-size:13px}}
+

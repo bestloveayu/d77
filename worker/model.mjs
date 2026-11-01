@@ -1,4 +1,10 @@
+import {classifyFollowUp,needsAttention} from '../public/order-followup.js';
 export const norm = v => String(v ?? '').normalize('NFKC').replace(/\s+/g, '').toLowerCase();
+function exemption(value){
+  const text=norm(value);if(['true','1','是','不需寄送','不需寄送中文規則'].includes(text))return true;
+  if(['false','0','否','需要寄送','需寄送'].includes(text))return false;
+  return null;
+}
 export async function digest(value) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value)));
   return [...new Uint8Array(bytes)].map(v => v.toString(16).padStart(2, '0')).join('');
@@ -32,7 +38,7 @@ export function catalog(rows) {
   return table(rows, ['中文名稱']).filter(r => r.get('中文名稱')).map(r => ({
     name: String(r.get('中文名稱')).trim(), foreignName: String(r.get('外文名稱')).trim(),
     price: n(r.get('代購(台)')), ordered: n(r.get('訂購量')), reserved: n(r.get('預約量')),
-    booth: String(r.get('攤位')), ruleUrl: safeUrl(r.get('規則書')), row: r.row
+    booth: String(r.get('攤位')), ruleUrl: safeUrl(r.get('規則書')), noRulesRequired:exemption(r.get('不需寄送中文規則')), row: r.row
   }));
 }
 export function safeUrl(value) {
@@ -151,6 +157,7 @@ export async function compose(input, config, now = new Date().toISOString()) {
   const resourceIndex=new Map();
   for (const r of team.resources.filter(r=>r.season===config.season)) {if(resourceIndex.has(r.key)) throw new Error('重複協作資源');resourceIndex.set(r.key,r);}
   for(const order of orders) for(const line of order.lines) {
+    line.noRulesRequired=resolve(line.name)?.noRulesRequired??null;
     line.evidence={purchased:'missing',shipped:'missing',mailed:'missing'};
     if(line.quantity==null){order.issues.push('數量待核對');continue;}
     for(const [kind,field] of [['purchase','purchased'],['shipment','shipped'],['mail','mailed']]) {
@@ -190,13 +197,14 @@ export async function compose(input, config, now = new Date().toISOString()) {
       purchaseUnknown:order.lines.filter(l=>l.purchased===null).length,shipmentUnknown:order.lines.filter(l=>l.shipped===null).length,mailUnknown:order.lines.filter(l=>l.mailed===null).length};
     const evidence=order.lines.flatMap(l=>Object.values(l.evidence));
     order.status=evidence.includes('conflict')?'來源不一致待核對':order.issues.length?'待核對':evidence.includes('processing')?'雲端處理中':order.lines.length&&order.lines.every(l=>l.shipped===l.quantity)?'已出貨':order.lines.some(l=>l.purchased>0)?'待出貨':order.lines.length&&order.lines.every(l=>l.purchased===0&&l.shipped===0)?'尚未下單':evidence.some(x=>x!=='missing')?'部分操作尚無雲端紀錄':'尚無雲端操作紀錄';
+    order.followUp=classifyFollowUp(order);
     // Do not expose contact details to the mobile app.
     delete order.email;order.phoneSuffix=order.phone?.slice(-3)||'';delete order.phone;
   }
-  return {season:config.season,updatedAt:now,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
+  return {season:config.season,updatedAt:now,followUpVersion:1,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
     issues:money.issues,operations:team.operations.filter(o=>o.season===config.season).map(o=>({id:o.id,actor:o.actor,kind:o.kind,status:o.status,time:o.updatedAt||o.createdAt})),
     sourceStatus:{catalog:'ok',responses:'ok',ledger:'ok',team:'ok',documents:'ok',rules:'ok'},
-    summary:{orders:orders.length,attention:orders.filter(o=>o.status!=='已出貨').length,shortages:products.filter(p=>p.shortage>0).length,unknownStock:products.filter(p=>p.coverage==='unknown').length,
+    summary:{orders:orders.length,attention:orders.filter(needsAttention).length,registrationPending:orders.filter(o=>o.followUp.kind==='registration').length,rulesPending:orders.filter(o=>o.followUp.kind==='rules').length,shortages:products.filter(p=>p.shortage>0).length,unknownStock:products.filter(p=>p.coverage==='unknown').length,
       rulesReady:products.filter(p=>p.rules.length).length,rulesTotal:products.length}};
 }
 export async function changes(previous, next) {
@@ -204,6 +212,10 @@ export async function changes(previous, next) {
   const events=[],add=async(type,key,title,detail,target,time=next.updatedAt)=>events.push({id:await digest([next.season,type,key]),type,title,detail,target,time});
   const oldOrders=new Map(previous.orders.map(o=>[o.id,o]));
   for(const o of next.orders){const old=oldOrders.get(o.id);
+    // An older snapshot establishes a silent migration baseline for the new reminders.
+    const task=o.followUp?.kind;
+    if(previous.followUpVersion===1&&['registration','rules'].includes(task)&&old?.followUp?.kind!==task)
+      await add(task==='rules'?'rules-pending':task,[o.id,task,next.updatedAt],task==='registration'?'訂單待出貨登記':'訂單待寄規則','有已確認的訂單待辦，請登入查看',{page:'orders',id:o.id});
     if(!old)await add('order',o.id,'新增預購訂單','有新的訂單等待查看',{page:'orders',id:o.id});
     else if(JSON.stringify(o.lines.map(l=>[l.originalName,l.quantity,l.price]))!==JSON.stringify(old.lines.map(l=>[l.originalName,l.quantity,l.price])))
       await add('change',o.id+await digest(o.lines.map(l=>[l.originalName,l.quantity,l.price])),'訂購內容有異動','請核對品項與數量',{page:'orders',id:o.id});

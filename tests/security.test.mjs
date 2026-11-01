@@ -24,5 +24,7 @@ test('bad notification settings rejected; no push until opt-in',async()=>{
   const {board}=fixture();const req=body=>new Request('https://internal/preferences',{method:'POST',headers:{'X-User':'one','X-Email':'one@gmail.com'},body:JSON.stringify(body)});
   assert.equal((await board.fetch(req({pushEnabled:true}))).status,400);
   assert.equal((await board.fetch(req({pushEnabled:false,quiet:true,quietStart:22,quietEnd:8,types:['order']}))).status,200);
+  assert.equal((await board.fetch(req({pushEnabled:true,quiet:true,quietStart:22,quietEnd:8,types:['registration','rules-pending']}))).status,200);
+  assert.equal((await board.fetch(req({pushEnabled:true,quiet:true,quietStart:22,quietEnd:8,types:['invalid-type']}))).status,400);
 });
 

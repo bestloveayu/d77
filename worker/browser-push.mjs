@@ -1,8 +1,9 @@
 import {buildPushPayload} from '@block65/webcrypto-web-push';
 import {digest} from './model.mjs';
+import {notificationTypes} from '../public/order-followup.js';
 
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
-const defaults={pushEnabled:false,quiet:true,quietStart:22,quietEnd:8,types:['order','change','shortage','rules','activity']};
+const defaults={pushEnabled:false,quiet:true,quietStart:22,quietEnd:8,types:notificationTypes};
 export const defaultPreferences=()=>({...defaults,types:[...defaults.types]});
 export function validateSubscription(value){
   let url;try{url=new URL(value?.endpoint);}catch{throw fail('裝置訂閱格式不正確');}
