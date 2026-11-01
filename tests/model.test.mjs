@@ -1,5 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+test('form quantity prompt is not a product name and full title price is retained',async()=>{
+  const rows=[['真實姓名','【遊戲甲】3〜5人，750元 [請勾選數量]'],['測試顧客',2]];
+  const result=await parseResponses(rows,config,[{name:'遊戲甲',price:800}]);
+  assert.equal(result[0].lines[0].name,'遊戲甲');
+  assert.equal(result[0].lines[0].price,750);
+  assert.equal(result[0].lines[0].mapped,true);
+});
 import {compose,changes,decodeTeam,digest,safeUrl,parseResponses,catalog,ledger} from '../worker/model.mjs';
 const config={season:'2026秋',spreadsheetId:'book',responseSheet:'2026秋預購回應',aliases:{'A遊戲甲':'遊戲甲'}};
 const input=()=>({catalog:[['中文名稱','外文名稱','代購(台)','訂購量','預約量','攤位','規則書'],['遊戲甲','Game A',100,3,3,'57','']],
@@ -51,3 +58,4 @@ test('baseline creates no old notifications; repeated snapshot no events',async(
 test('inventory includes history and finance only selected season',()=>{
   const value=ledger(input().ledger,config.season);assert.equal(value.stock.get('遊戲甲'),2);assert.equal(value.income,100);assert.equal(value.cost,0);
 });
+
