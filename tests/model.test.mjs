@@ -1,5 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+test('local form prefix normalization binds cloud shipment and proves purchase without guessing missing records',async()=>{
+  const source=input();source.responses[0][5]='2026GM [R.遊戲甲 2-3人：100元]';
+  const origin=['2026秋','book',config.responseSheet,2,5];
+  source.team.resources=[{key:await digest(['shipment',...origin,'']),fingerprint:await digest([origin,'遊戲甲',2]),doneQuantity:2,season:'2026秋'}];
+  const result=await compose(source,config);const order=result.orders[0];
+  assert.equal(order.lines[0].shipped,2);assert.equal(order.lines[0].purchased,2);
+  assert.equal(order.progress.shipped,2);assert.equal(order.status,'已出貨');
+  const missing=await compose(input(),config);
+  assert.equal(missing.orders[0].status,'尚無雲端操作紀錄');
+  assert.equal(missing.orders[0].lines[0].evidence.shipped,'missing');
+});
+test('source conflicts and active operations remain distinct and do not inherit done quantities',async()=>{
+  const source=input();const origin=['2026秋','book',config.responseSheet,2,5];
+  source.team.resources=[{key:await digest(['shipment',...origin,'']),fingerprint:'different',doneQuantity:2,season:'2026秋'}];
+  const conflict=(await compose(source,config)).orders[0];
+  assert.equal(conflict.status,'來源不一致待核對');assert.equal(conflict.lines[0].shipped,null);
+  source.team.resources[0]={...source.team.resources[0],fingerprint:await digest([origin,'A遊戲甲',2]),doneQuantity:0,activeOperationId:'in-flight'};
+  const active=(await compose(source,config)).orders[0];
+  assert.equal(active.lines[0].evidence.shipped,'processing');assert.equal(active.status,'雲端處理中');
+});
 test('season account difference follows payer columns and settlement direction',()=>{
   const h=['品項','增減數量','東收入','于收入','東支出','于支出','季別','結餘(東給于)'];
   const rows=[h,['',0,1000,200,400,600,'2026秋',100],['',0,9999,0,0,0,'2026春',0]];
@@ -48,7 +68,7 @@ test('resource hashes match Python collaboration contract and preserve partial s
 });
 test('changed source fingerprint remains unknown rather than inheriting shipment',async()=>{
   const source=input();source.team.resources=[{key:await digest(['shipment','2026秋','book',config.responseSheet,2,5,'']),fingerprint:'wrong',doneQuantity:1,season:'2026秋'}];
-  const result=await compose(source,config);assert.equal(result.orders[0].status,'待核對');assert.equal(result.orders[0].lines[0].shipped,null);
+  const result=await compose(source,config);assert.equal(result.orders[0].status,'來源不一致待核對');assert.equal(result.orders[0].lines[0].shipped,null);
 });
 test('manual tombstones excluded and stable manual line IDs used',async()=>{
   const source=input();source.documents.documents=[{kind:'manualOrder',season:'2026秋',id:'removed',deleted:true,body:{}},{kind:'manualOrder',season:'2026秋',id:'a'.repeat(32),deleted:false,body:{name:'手動顧客',items:[{name:'遊戲甲',quantity:1,unitPrice:100,localLineId:'b'.repeat(32)}]}}];

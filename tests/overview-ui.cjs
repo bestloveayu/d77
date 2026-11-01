@@ -4,6 +4,7 @@ const {spawn}=require('node:child_process');
 (async()=>{const server=spawn(process.execPath,['scripts/preview.mjs'],{env:{...process.env,PORT:'8791'},windowsHide:true});await new Promise((resolve,reject)=>{server.stdout.once('data',resolve);server.once('error',reject);});const browser=await chromium.launch({channel:'msedge',headless:true});try{
   const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('https://accounts.google.com/**',r=>r.abort());
+  await page.route('**/demo.js',async route=>{const response=await route.fetch();const body=await response.text();await route.fulfill({response,body:body.replace('return {fictional:true','orders.forEach(o=>{o.progress={total:3,purchased:2,shipped:1,mailed:0,ruleTotal:2,purchaseUnknown:1,shipmentUnknown:1,mailUnknown:2};});return {fictional:true')});});
   await page.route('**/',async route=>{const response=await route.fetch();const body=await response.text();await route.fulfill({response,body:body.replace('<div id="google-login">','<button id="demo-enter">Test fixture</button><div id="google-login">')});});
   await page.goto('http://127.0.0.1:8791/');await page.locator('#demo-enter').click();
   for(const width of [320,390,1440]){
@@ -20,6 +21,15 @@ const {spawn}=require('node:child_process');
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     await page.screenshot({path:`test-results/overview-finance-${width}.png`,fullPage:true});
   }
-  assert.deepEqual(errors,[]);console.log('PASS finance first, four fields, 320/390/1440 layouts without overflow. Synthetic data only.');
+  await page.locator('#nav [data-page=orders]').click();
+  for(const width of [320,390,1440]){
+    await page.setViewportSize({width,height:900});
+    assert((await page.locator('.order').first().innerText()).includes('部分無紀錄'));
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.screenshot({path:`test-results/order-progress-${width}.png`,fullPage:true});
+  }
+  await page.locator('.order-name').first().click();
+  assert((await page.locator('#detail').innerText()).includes('出貨'));
+  assert.deepEqual(errors,[]);console.log('PASS finance alignment and order progress at 320/390/1440 without overflow. Synthetic data only.');
 }finally{await browser.close();server.kill();}})().catch(e=>{console.error(e);process.exitCode=1;});
 

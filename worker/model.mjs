@@ -59,7 +59,7 @@ function headerProduct(header) {
   const title = source.match(/【([^】]+)】/)?.[1];
   const price = source.match(/(?:[:：]|NT\$|\$)\s*([\d,]+(?:\.\d+)?)/) || source.match(/([\d,]+(?:\.\d+)?)\s*元/);
   if (!bracket && !price && !source.includes('【')) return null;
-  const name = title || source.split(/\s+\d+\s*[-–~〜～]\s*\d+\s*人|\s+\d+\s*人|[:：]/)[0].trim();
+  const name = (title || source.split(/\s+\d+\s*[-–~〜～]\s*\d+\s*人|\s+\d+\s*人|[:：]/)[0].trim()).replace(/^[A-ZＡ-Ｚ][.．、]\s*/, '').replace(/^(?:新作|前作)\s*[-－]\s*/, '');
   return { name, price: price ? n(price[1]) : null };
 }
 export async function parseResponses(rows, config, items) {
@@ -75,7 +75,7 @@ export async function parseResponses(rows, config, items) {
   const wishCol = normalized.findIndex(x => x.startsWith('許願區'));
   const storeCol = headers.findIndex(x => /取貨.*(?:店|門市)|門市名稱/.test(x));
   const ignored = new Set([nameCol,emailCol,phoneCol,nicknameCol,timeCol,wishCol,storeCol]);
-  const resolve = resolver(items, config.aliases);
+  const resolve = resolver(items, config.aliases), sourceResolve=resolver(items);
   const columns = headers.flatMap((v,i) => {
     if (ignored.has(i)) return [];
     const override = config.productColumns?.[String(i)];
@@ -90,7 +90,7 @@ export async function parseResponses(rows, config, items) {
     for (const col of columns) {
       const q = quantity(row[col.col]); if (q === 0) continue;
       const item = resolve(col.name);
-      lines.push({ name: item?.name || col.name, originalName: col.name, quantity:q, price:col.price ?? item?.price ?? null,
+      lines.push({ name: item?.name || col.name, originalName: sourceResolve(col.name)?.name || col.name, quantity:q, price:col.price ?? item?.price ?? null,
         sourceRow:i+1, sourceColumn:col.col, mapped:!!item, purchased:null, shipped:null, mailed:null });
     }
     const wish = String(row[wishCol] ?? '');
@@ -151,14 +151,20 @@ export async function compose(input, config, now = new Date().toISOString()) {
   const resourceIndex=new Map();
   for (const r of team.resources.filter(r=>r.season===config.season)) {if(resourceIndex.has(r.key)) throw new Error('重複協作資源');resourceIndex.set(r.key,r);}
   for(const order of orders) for(const line of order.lines) {
+    line.evidence={purchased:'missing',shipped:'missing',mailed:'missing'};
     if(line.quantity==null){order.issues.push('數量待核對');continue;}
     for(const [kind,field] of [['purchase','purchased'],['shipment','shipped'],['mail','mailed']]) {
       const expected=await resource(line,order,config,kind),r=resourceIndex.get(expected.key);
       if(!r){line[field]=null;continue;}
       if(r.fingerprint!==expected.fingerprint||!Number.isInteger(r.doneQuantity)||r.doneQuantity<0||r.doneQuantity>(kind==='mail'?1:line.quantity)) {
-        order.issues.push(line.name+' 協作來源待核對');line[field]=null;continue;
+        order.issues.push(line.name+' 協作來源待核對');line.evidence[field]='conflict';line[field]=null;continue;
       }
       line[field]=r.doneQuantity;
+      line.evidence[field]=r.activeOperationId?'processing':'confirmed';
+    }
+    if(line.shipped!==null&&line.evidence.purchased!=='conflict'){
+      line.purchased=Math.max(line.purchased??0,line.shipped);
+      if(line.evidence.purchased==='missing')line.evidence.purchased='shipment';
     }
     // No record is unknown, not a claim that an offline historical order never shipped.
   }
@@ -177,7 +183,11 @@ export async function compose(input, config, now = new Date().toISOString()) {
       customers:rows.map(x=>({id:x.order.id,name:x.order.name,mailed:x.line.mailed})),coverage:known?'confirmed':'unknown'};
   });
   for(const order of orders){order.total=order.lines.every(l=>l.quantity!==null&&l.price!==null)?order.lines.reduce((a,l)=>a+l.quantity*l.price,0):null;
-    order.status=order.issues.length?'待核對':order.lines.length&&order.lines.every(l=>l.shipped===l.quantity)?'已出貨':order.lines.some(l=>l.purchased>0)?'待出貨':'狀態未確認';
+    const knownSum=field=>order.lines.reduce((sum,l)=>sum+(l[field]??0),0);
+    order.progress={total:order.lines.every(l=>l.quantity!==null)?knownSum('quantity'):null,purchased:knownSum('purchased'),shipped:knownSum('shipped'),mailed:order.lines.filter(l=>l.mailed===1).length,ruleTotal:order.lines.length,
+      purchaseUnknown:order.lines.filter(l=>l.purchased===null).length,shipmentUnknown:order.lines.filter(l=>l.shipped===null).length,mailUnknown:order.lines.filter(l=>l.mailed===null).length};
+    const evidence=order.lines.flatMap(l=>Object.values(l.evidence));
+    order.status=evidence.includes('conflict')?'來源不一致待核對':order.issues.length?'待核對':evidence.includes('processing')?'雲端處理中':order.lines.length&&order.lines.every(l=>l.shipped===l.quantity)?'已出貨':order.lines.some(l=>l.purchased>0)?'待出貨':order.lines.length&&order.lines.every(l=>l.purchased===0&&l.shipped===0)?'尚未下單':evidence.some(x=>x!=='missing')?'部分操作尚無雲端紀錄':'尚無雲端操作紀錄';
     // Do not expose contact details to the mobile app.
     delete order.email;order.phoneSuffix=order.phone?.slice(-3)||'';delete order.phone;
   }

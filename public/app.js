@@ -1,12 +1,14 @@
 import {demoSnapshot,demoEvents} from './demo.js';
 import {showSeasonSettings} from './season-settings.js';
 import {SOURCE_DEFAULTS} from './season-config.js';
+import {stageLabel,orderProgressLabels} from './order-status.js';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
 const icon=name=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>n==null?'待核對':'$'+Number(n).toLocaleString('zh-TW');
 const num=n=>n==null?'—':n;
 const badge=(text,kind='')=>`<span class="badge ${kind}">${esc(text)}</span>`;
+const progressBadges=o=>orderProgressLabels(o).map(p=>badge(p.text,p.good?'good':'')).join('');
 const names={overview:'營運總覽',orders:'顧客訂單',inventory:'庫存查詢',rules:'規則進度',notifications:'通知中心'};
 const eventIcon={order:'clipboard-list',change:'git-compare-arrows',shortage:'triangle-alert',rules:'book-open',activity:'package-check'};
 let data=null,events=[],token='',account='',demo=false,stale=false,busy=false,error='',page='overview',filter='all',search='',sort='new',timer;
@@ -61,7 +63,7 @@ function ordersView(){
   if(filter==='pending')rows=rows.filter(o=>o.status!=='已出貨');if(filter==='done')rows=rows.filter(o=>o.status==='已出貨');
   rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):(parseTime(a.time)-parseTime(b.time))*(sort==='old'?1:-1));
   return filters('搜尋顧客、品項',[['all','全部'],['pending','待處理'],['done','已出貨']],[['new','填單時間新到舊'],['old','填單時間舊到新'],['name','依姓名']])+`<div class="count-line"><span>共 ${rows.length} 筆訂單</span><span>依原始訂單分列</span></div>`+
-  (rows.map(o=>`<article class="order"><div class="order-top"><div><button class="order-name" data-order="${esc(o.id)}">${esc(o.name||'姓名待核對')}${icon('chevron-right')}</button><p class="order-meta">${esc(o.nickname||'')}${o.nickname?' · ':''}${o.manual?'手動訂單':esc(o.time||'填單時間未記錄')}</p></div><strong>${money(o.total)}</strong></div><div class="badges">${badge(o.status,o.status==='已出貨'?'good':o.status==='待核對'?'bad':'warn')}${o.manual?badge('手動追加'):''}${o.phoneSuffix?badge('手機末碼 '+o.phoneSuffix):''}</div><div class="order-items">${o.lines.map(l=>`<span class="order-item">${icon('package')}${esc(l.name)} × ${num(l.quantity)}</span>`).join('')}</div></article>`).join('')||empty('沒有符合條件的訂單'));
+  (rows.map(o=>`<article class="order"><div class="order-top"><div><button class="order-name" data-order="${esc(o.id)}">${esc(o.name||'姓名待核對')}${icon('chevron-right')}</button><p class="order-meta">${esc(o.nickname||'')}${o.nickname?' · ':''}${o.manual?'手動訂單':esc(o.time||'填單時間未記錄')}</p></div><strong>${money(o.total)}</strong></div><div class="badges">${badge(o.status,o.status==='已出貨'?'good':o.status==='待核對'?'bad':'warn')}${progressBadges(o)}${o.manual?badge('手動追加'):''}${o.phoneSuffix?badge('手機末碼 '+o.phoneSuffix):''}</div><div class="order-items">${o.lines.map(l=>`<span class="order-item">${icon('package')}${esc(l.name)} × ${num(l.quantity)}</span>`).join('')}</div></article>`).join('')||empty('沒有符合條件的訂單'));
 }
 function stockTable(rows){return rows.length?`<div class="stock-head"><span>品項</span><span>待出</span><span>庫存</span><span>缺口</span><span></span></div>${rows.map(p=>`<div class="stock-row"><button class="order-name stock-name" data-product="${esc(p.name)}">${esc(p.name)}</button><span class="num">${num(p.outstanding)}</span><span class="num">${p.stock}</span><span class="num ${p.shortage>0?'deficit':''}">${num(p.shortage)}</span><button class="icon-button" data-product="${esc(p.name)}" aria-label="查看 ${esc(p.name)}" title="查看品項">${icon('chevron-right')}</button></div>`).join('')}`:empty('目前沒有符合條件的品項');}
 function inventoryView(){
@@ -114,8 +116,8 @@ function manageSeasons(){showSeasonSettings({demo,getState:()=>seasonState,api,o
 function go(target,newFilter='all'){filter=newFilter;search='';sort='new';if(page===target)render();else location.hash=target;}
 function openDialog(title,body){$('#detail-title').textContent=title;$('#detail-body').innerHTML=body;icons();if(!$('#detail').open)$('#detail').showModal();}
 function orderDetail(id){const o=data.orders.find(o=>o.id===id);if(!o)return;
-  openDialog(o.name,`<div class="badges">${badge(o.status,o.status==='已出貨'?'good':'warn')}${badge('總額 '+money(o.total))}</div><p class="read-only-note">${esc(o.time||'')} ${o.sourceRow?'· 來源列 '+o.sourceRow:''}</p>${o.lines.map(l=>{
-    const p=data.products.find(p=>p.name===l.name);return `<div class="detail-line"><strong>${esc(l.name)}</strong><span class="amount">${num(l.quantity)} × ${money(l.price)}</span><div class="badges">${badge(l.purchased==null?'下單未確認':'已下單 '+l.purchased+'/'+num(l.quantity),l.purchased>0?'good':'')}${badge(l.shipped==null?'出貨未確認':'已出貨 '+l.shipped+'/'+num(l.quantity),l.shipped>0?'good':'')}${badge(l.mailed===1?'規則已寄':l.mailed===0?'規則未寄':'寄送未確認',l.mailed===1?'good':'')}${badge(p?.rules.length?'已翻譯':'未翻譯',p?.rules.length?'good':'warn')}</div>${links(p)}</div>`;}).join('')}${o.issues?.length?`<p class="notice">${esc(o.issues.join('；'))}</p>`:''}`);
+  openDialog(o.name,`<div class="badges">${badge(o.status,o.status==='已出貨'?'good':'warn')}${badge('總額 '+money(o.total))}${progressBadges(o)}</div><p class="read-only-note">${esc(o.time||'')} ${o.sourceRow?'· 來源列 '+o.sourceRow:''}</p>${o.lines.map(l=>{
+    const p=data.products.find(p=>p.name===l.name);return `<div class="detail-line"><strong>${esc(l.name)}</strong><span class="amount">${num(l.quantity)} × ${money(l.price)}</span><div class="badges">${['purchased','shipped','mailed'].map(field=>badge(stageLabel(l,field),l.evidence?.[field]==='conflict'?'bad':l[field]>0?'good':'')).join('')}${badge(p?.rules.length?'已翻譯':'未翻譯',p?.rules.length?'good':'warn')}</div>${links(p)}</div>`;}).join('')}${o.issues?.length?`<p class="notice">${esc(o.issues.join('；'))}</p>`:''}`);
 }
 function productDetail(name,rulesOnly=false){const p=data.products.find(p=>p.name===name);if(!p)return;
   openDialog(p.name,`${rulesOnly?'':`<div class="finance"><div><small>全新庫存</small><strong>${p.stock}</strong></div><div><small>二手庫存</small><strong>${p.usedStock}</strong></div><div><small>未出貨需求</small><strong>${num(p.outstanding)}</strong></div></div>`}${links(p)}<h3>訂購顧客</h3>${p.customers.map(c=>`<div class="field"><button class="order-name" data-order="${esc(c.id)}">${esc(c.name)}${icon('chevron-right')}</button>${badge(c.mailed===1?'規則已寄':c.mailed===0?'規則未寄':'寄送未確認',c.mailed===1?'good':'')}</div>`).join('')||empty('目前沒有對應的訂購資料')}`);
