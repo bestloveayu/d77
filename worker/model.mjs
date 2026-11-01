@@ -107,7 +107,7 @@ export async function parseResponses(rows, config, items) {
 }
 export function ledger(rows, season) {
   const records = table(rows,['品項','增減數量','東收入','于收入','東支出','于支出','季別']);
-  const stock = new Map(); let income=0,cost=0; const issues=[];
+  const stock = new Map(); let income=0,cost=0,eastDue=0; const issues=[];
   // Inventory is all-history; finance is the selected season only.
   for (const r of records) {
     const name=String(r.get('品項')).trim(), raw=r.get('增減數量'), q=raw===''?0:n(raw);
@@ -115,10 +115,13 @@ export function ledger(rows, season) {
     if (name && q) stock.set(name,(stock.get(name)||0)+q);
     if (String(r.get('季別')).trim()!==season) continue;
     const values=['東收入','于收入','東支出','于支出'].map(k => r.get(k)===''?0:n(r.get(k)));
-    if (values.some(v=>v===null)) {issues.push('金流第 '+r.row+' 列金額無法辨識');continue;}
+    if (values.some(v=>v===null)) {issues.push('金流第 '+r.row+' 列金額無法辨識');eastDue=null;continue;}
     income+=values[0]+values[1];cost+=values[2]+values[3];
+    const settlement=r.get('結餘(東給于)')===''?0:n(r.get('結餘(東給于)'));
+    if(settlement===null){issues.push('金流第 '+r.row+' 列結算金額無法辨識');eastDue=null;}
+    else if(eastDue!==null)eastDue+=(values[0]+values[3]-values[2]-values[1])/2-settlement;
   }
-  return {stock,income,cost,issues};
+  return {stock,income,cost,eastDue,issues};
 }
 function orderedJson(value) {
   if (Array.isArray(value)) return '['+value.map(orderedJson).join(',')+']';
@@ -178,7 +181,7 @@ export async function compose(input, config, now = new Date().toISOString()) {
     // Do not expose contact details to the mobile app.
     delete order.email;order.phoneSuffix=order.phone?.slice(-3)||'';delete order.phone;
   }
-  return {season:config.season,updatedAt:now,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost},
+  return {season:config.season,updatedAt:now,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
     issues:money.issues,operations:team.operations.filter(o=>o.season===config.season).map(o=>({id:o.id,actor:o.actor,kind:o.kind,status:o.status,time:o.updatedAt||o.createdAt})),
     sourceStatus:{catalog:'ok',responses:'ok',ledger:'ok',team:'ok',documents:'ok',rules:'ok'},
     summary:{orders:orders.length,attention:orders.filter(o=>o.status!=='已出貨').length,shortages:products.filter(p=>p.shortage>0).length,unknownStock:products.filter(p=>p.coverage==='unknown').length,

@@ -1,5 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+test('season account difference follows payer columns and settlement direction',()=>{
+  const h=['品項','增減數量','東收入','于收入','東支出','于支出','季別','結餘(東給于)'];
+  const rows=[h,['',0,1000,200,400,600,'2026秋',100],['',0,9999,0,0,0,'2026春',0]];
+  assert.equal(ledger(rows,'2026秋').eastDue,400);
+  assert.equal(ledger([h,['',0,0,1000,0,0,'2026秋',0]],'2026秋').eastDue,-500);
+  assert.equal(ledger([h,['',0,0,0,0,0,'2026秋','待核對']],'2026秋').eastDue,null);
+});
 test('cash totals are independent of invalid stock quantities and use local currency formatting',()=>{
   const rows=[['品項','增減數量','東收入','于收入','東支出','于支出','季別'],['遊戲甲','待核對','NT$ 1,200元','', '', '$300','2026秋']];
   const result=ledger(rows,'2026秋');
