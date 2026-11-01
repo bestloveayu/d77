@@ -1,0 +1,2 @@
+.inventory-scroll{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}.inventory-stock{min-width:650px}.inventory-stock .stock-head,.inventory-stock .stock-row{grid-template-columns:minmax(170px,1fr) 62px 88px 62px 58px 62px 20px;gap:10px}.inventory-stock .stock-head{font-size:12px}.inventory-stock .num{font-variant-numeric:tabular-nums;font-size:13px}.inventory-stock .stock-head>span:not(:first-child){text-align:right}
+

@@ -40,6 +40,8 @@ const {spawn}=require('node:child_process');
   await swipe('#page-title',-100,200);assert(page.url().endsWith('#notifications'),'vertical scrolling must not navigate');
   await page.locator('#nav [data-page=inventory]').click();
   assert((await page.locator('.stock-head').innerText()).includes('缺貨'));
+  assert((await page.locator('.stock-head').innerText()).includes('訂購量'));
+  assert((await page.locator('.stock-head').innerText()).includes('已確認出貨'));
   await swipe('#search',-100);assert(page.url().endsWith('#inventory'),'search blocks swipe');
   assert.deepEqual(errors,[]);console.log('PASS finance alignment and order progress at 320/390/1440 without overflow. Synthetic data only.');
 }finally{await browser.close();server.kill();}})().catch(e=>{console.error(e);process.exitCode=1;});
