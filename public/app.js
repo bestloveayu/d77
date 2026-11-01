@@ -2,6 +2,7 @@ import {demoSnapshot,demoEvents} from './demo.js';
 import {showSeasonSettings} from './season-settings.js';
 import {SOURCE_DEFAULTS} from './season-config.js';
 import {stageLabel,orderProgressLabels} from './order-status.js';
+import {installSwipe} from './swipe.js';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
 const icon=name=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -65,12 +66,12 @@ function ordersView(){
   return filters('搜尋顧客、品項',[['all','全部'],['pending','待處理'],['done','已出貨']],[['new','填單時間新到舊'],['old','填單時間舊到新'],['name','依姓名']])+`<div class="count-line"><span>共 ${rows.length} 筆訂單</span><span>依原始訂單分列</span></div>`+
   (rows.map(o=>`<article class="order"><div class="order-top"><div><button class="order-name" data-order="${esc(o.id)}">${esc(o.name||'姓名待核對')}${icon('chevron-right')}</button><p class="order-meta">${esc(o.nickname||'')}${o.nickname?' · ':''}${o.manual?'手動訂單':esc(o.time||'填單時間未記錄')}</p></div><strong>${money(o.total)}</strong></div><div class="badges">${badge(o.status,o.status==='已出貨'?'good':o.status==='待核對'?'bad':'warn')}${progressBadges(o)}${o.manual?badge('手動追加'):''}${o.phoneSuffix?badge('手機末碼 '+o.phoneSuffix):''}</div><div class="order-items">${o.lines.map(l=>`<span class="order-item">${icon('package')}${esc(l.name)} × ${num(l.quantity)}</span>`).join('')}</div></article>`).join('')||empty('沒有符合條件的訂單'));
 }
-function stockTable(rows){return rows.length?`<div class="stock-head"><span>品項</span><span>待出</span><span>庫存</span><span>缺口</span><span></span></div>${rows.map(p=>`<div class="stock-row"><button class="order-name stock-name" data-product="${esc(p.name)}">${esc(p.name)}</button><span class="num">${num(p.outstanding)}</span><span class="num">${p.stock}</span><span class="num ${p.shortage>0?'deficit':''}">${num(p.shortage)}</span><button class="icon-button" data-product="${esc(p.name)}" aria-label="查看 ${esc(p.name)}" title="查看品項">${icon('chevron-right')}</button></div>`).join('')}`:empty('目前沒有符合條件的品項');}
+function stockTable(rows){return rows.length?`<div class="stock-head"><span>品項</span><span>待出</span><span>庫存</span><span>缺貨</span><span></span></div>${rows.map(p=>`<div class="stock-row"><button class="order-name stock-name" data-product="${esc(p.name)}">${esc(p.name)}</button><span class="num">${num(p.outstanding)}</span><span class="num">${p.stock}</span><span class="num ${p.shortage>0?'deficit':''}">${num(p.shortage)}</span><button class="icon-button" data-product="${esc(p.name)}" aria-label="查看 ${esc(p.name)}" title="查看品項">${icon('chevron-right')}</button></div>`).join('')}`:empty('目前沒有符合條件的品項');}
 function inventoryView(){
   let rows=data.products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
   if(filter==='shortage')rows=rows.filter(p=>p.shortage>0);if(filter==='used')rows=rows.filter(p=>p.usedStock!==0);if(filter==='unknown')rows=rows.filter(p=>p.coverage==='unknown');
   rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):sort==='stock'?a.stock-b.stock:(b.shortage??-1)-(a.shortage??-1));
-  return filters('搜尋品項',[['all','全部'],['shortage','缺貨'],['used','二手'],['unknown','待確認']],[['new','缺口多到少'],['name','依名稱'],['stock','庫存少到多']])+stockTable(rows)+`<p class="read-only-note">${icon('info')} 庫存依歷年雲端金流計算。「—」表示出貨證據不足，未推算缺口。二手量於品項明細分列。</p>`;
+  return filters('搜尋品項',[['all','全部'],['shortage','缺貨'],['used','二手'],['unknown','待確認']],[['new','缺貨多到少'],['name','依名稱'],['stock','庫存少到多']])+stockTable(rows)+`<p class="read-only-note">${icon('info')} 庫存依歷年雲端金流計算。「—」表示出貨證據不足，未推算缺貨。二手量於品項明細分列。</p>`;
 }
 function rulesView(){
   let rows=data.products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
@@ -152,6 +153,7 @@ document.addEventListener('click',async e=>{
 });
 window.addEventListener('hashchange',()=>{page=names[location.hash.slice(1)]?location.hash.slice(1):'overview';render();window.scrollTo(0,0);});
 $('#nav').addEventListener('click',e=>{if(e.target.closest('a')){filter='all';search='';sort='new';}});
+installSwipe($('#workspace'),{current:()=>page,enabled:()=>!!data&&!busy&&!$('#workspace').hidden,navigate:target=>go(target)});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&token)refresh();});
 async function initializeGoogle(){
   if(!config.googleClientId||!config.apiBase){$('#login-status').textContent='正式雲端連線尚未設定，可先瀏覽示範資料。';icons();return;}
