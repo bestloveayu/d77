@@ -1,5 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+test('cash totals are independent of invalid stock quantities and use local currency formatting',()=>{
+  const rows=[['品項','增減數量','東收入','于收入','東支出','于支出','季別'],['遊戲甲','待核對','NT$ 1,200元','', '', '$300','2026秋']];
+  const result=ledger(rows,'2026秋');
+  assert.equal(result.income,1200);assert.equal(result.cost,300);
+  assert.equal(result.stock.has('遊戲甲'),false);
+  assert.equal(result.issues.length,1);
+});
 test('form quantity prompt is not a product name and full title price is retained',async()=>{
   const rows=[['真實姓名','【遊戲甲】3〜5人，750元 [請勾選數量]'],['測試顧客',2]];
   const result=await parseResponses(rows,config,[{name:'遊戲甲',price:800}]);
