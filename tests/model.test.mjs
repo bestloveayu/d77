@@ -7,6 +7,11 @@ test('form quantity prompt is not a product name and full title price is retaine
   assert.equal(result[0].lines[0].price,750);
   assert.equal(result[0].lines[0].mapped,true);
 });
+test('matrix options retain their own name and price rather than the shared question title',async()=>{
+  const rows=[['真實姓名','【系列】 [【遊戲乙】2人，490元]','【組合】1490元 [單獨擴充]'],['測試顧客',1,1]];
+  const result=await parseResponses(rows,config,[{name:'遊戲乙',price:490},{name:'單獨擴充',price:599}]);
+  assert.deepEqual(result[0].lines.map(x=>[x.name,x.price]),[['遊戲乙',490],['單獨擴充',599]]);
+});
 import {compose,changes,decodeTeam,digest,safeUrl,parseResponses,catalog,ledger} from '../worker/model.mjs';
 const config={season:'2026秋',spreadsheetId:'book',responseSheet:'2026秋預購回應',aliases:{'A遊戲甲':'遊戲甲'}};
 const input=()=>({catalog:[['中文名稱','外文名稱','代購(台)','訂購量','預約量','攤位','規則書'],['遊戲甲','Game A',100,3,3,'57','']],
