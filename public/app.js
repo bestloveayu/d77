@@ -39,7 +39,7 @@ function overview(){
   const low=data.products.filter(p=>p.shortage>0).slice(0,4);
   const due=data.finance.eastDue;
   const dueText=due==null?'待核對':Math.round(due*100)===0?'已平衡':due<0?'于應給東':'東應給于';
-  return `<section class="section overview-finance" aria-label="本季收支">${heading(esc(data.season)+' · 本季收支')}<div class="finance finance-overview"><div><small>收入</small><strong>${money(data.finance.income)}</strong></div><div><small>成本</small><strong>${money(data.finance.cost)}</strong></div><div><small>結餘</small><strong>${money(data.finance.profit)}</strong></div><div class="season-due"><small>該季帳款差額</small><span>${dueText}</span>${due!=null&&Math.round(due*100)!==0?`<strong>${money(Math.abs(due))}</strong>`:''}</div></div></section>
+  return `<section class="section overview-finance" aria-label="本季收支">${heading(esc(data.season)+' · 本季收支')}<div class="finance finance-overview"><div><small>收入</small><strong>${money(data.finance.income)}</strong></div><div><small>成本</small><strong>${money(data.finance.cost)}</strong></div><div><small>結餘</small><strong>${money(data.finance.profit)}</strong></div><div class="season-due"><small>${dueText}</small><strong>${due==null?'待核對':money(Math.abs(due))}</strong></div></div></section>
   <div class="metrics">${stats.map(([i,label,count,kind])=>`<div class="metric ${kind}">${icon(i)}<div><span class="metric-label">${label}</span><strong>${count}</strong></div></div>`).join('')}</div>
   <section class="section">${heading('待辦提醒')}
     <button class="alert-row warn" data-go="inventory" data-filter="shortage">${icon('triangle-alert')}<span class="text"><strong>${s.shortages} 款遊戲待補貨</strong><small>依已確認未出貨需求與帳面庫存計算</small></span>${icon('chevron-right')}</button>
