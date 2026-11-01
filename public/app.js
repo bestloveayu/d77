@@ -13,7 +13,7 @@ const num=n=>n==null?'—':n;
 const badge=(text,kind='')=>`<span class="badge ${kind}">${esc(text)}</span>`;
 const progressBadges=o=>{const task=followUp(o);return orderProgressLabels(o).map(p=>badge(p.text,p.good?'good':'')).join('')+(['registration','rules'].includes(task.kind)?badge(task.label,'warn'):task.kind==='review'?badge(task.reason||task.label,'warn'):'');};
 const names={overview:'營運總覽',orders:'顧客訂單',inventory:'庫存查詢',rules:'規則進度',notifications:'通知中心'};
-const eventIcon={order:'clipboard-list',change:'git-compare-arrows',shortage:'triangle-alert',rules:'book-open',activity:'package-check',registration:'clipboard-clock','rules-pending':'mail'};
+const eventIcon={order:'clipboard-list',change:'git-compare-arrows',shortage:'triangle-alert',rules:'book-open',activity:'package-check',registration:'clipboard-list','rules-pending':'mail'};
 const followUp=o=>o.followUp||classifyFollowUp(o);
 let data=null,events=[],token='',account='',demo=false,stale=false,busy=false,error='',page='overview',filter='all',search='',sort='new',timer;
 let selectedSeason=localStorage.getItem('d77-season')||'',requestEpoch=0,authGeneration=0,composingSearch=false;
@@ -49,7 +49,7 @@ function overview(){
   return `<section class="section overview-finance" aria-label="本季收支">${heading(esc(data.season)+' · 本季收支')}<div class="finance finance-overview"><div><small>收入</small><strong>${money(data.finance.income)}</strong></div><div><small>成本</small><strong>${money(data.finance.cost)}</strong></div><div><small>結餘</small><strong>${money(data.finance.profit)}</strong></div><div class="season-due"><small>${dueText}</small><strong>${due==null?'待核對':money(Math.abs(due))}</strong></div></div></section>
   <div class="metrics">${stats.map(([i,label,count,kind])=>`<div class="metric ${kind}">${icon(i)}<div><span class="metric-label">${label}</span><strong>${count}</strong></div></div>`).join('')}</div>
   <section class="section">${heading('待辦提醒')}
-    <button class="alert-row warn" data-go="orders" data-filter="registration">${icon('clipboard-clock')}<span class="text"><strong>${registration} 筆訂單待出貨登記</strong><small>已下單，尚未完成銷貨收入／出貨登記</small></span>${icon('chevron-right')}</button>
+    <button class="alert-row warn" data-go="orders" data-filter="registration">${icon('clipboard-list')}<span class="text"><strong>${registration} 筆訂單待出貨登記</strong><small>已下單，尚未完成銷貨收入／出貨登記</small></span>${icon('chevron-right')}</button>
     <button class="alert-row" data-go="orders" data-filter="rules">${icon('mail')}<span class="text"><strong>${rulesPending} 筆訂單待寄規則</strong><small>已完成出貨登記，需要寄送的規則尚未寄齊</small></span>${icon('chevron-right')}</button>
     <button class="alert-row warn" data-go="inventory" data-filter="shortage">${icon('triangle-alert')}<span class="text"><strong>${s.shortages} 款遊戲待補貨</strong><small>依已確認未出貨需求與帳面庫存計算</small></span>${icon('chevron-right')}</button>
     <button class="alert-row" data-go="rules" data-filter="ready">${icon('book-open-check')}<span class="text"><strong>${s.rulesReady} 款中文規則已備齊</strong><small>查看訂購顧客與規則寄送狀態</small></span>${icon('chevron-right')}</button>
