@@ -14,7 +14,7 @@ const progressBadges=o=>orderProgressLabels(o).map(p=>badge(p.text,p.good?'good'
 const names={overview:'營運總覽',orders:'顧客訂單',inventory:'庫存查詢',rules:'規則進度',notifications:'通知中心'};
 const eventIcon={order:'clipboard-list',change:'git-compare-arrows',shortage:'triangle-alert',rules:'book-open',activity:'package-check'};
 let data=null,events=[],token='',account='',demo=false,stale=false,busy=false,error='',page='overview',filter='all',search='',sort='new',timer;
-let selectedSeason=localStorage.getItem('d77-season')||'',requestEpoch=0,authGeneration=0;
+let selectedSeason=localStorage.getItem('d77-season')||'',requestEpoch=0,authGeneration=0,composingSearch=false;
 let seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};
 const demoEventStore=new Map();
 function demoSources(){return {revision:0,defaultSeason:'2026秋',canManage:true,seasons:['2026秋','2026春'].map(season=>({season,config:{season,spreadsheetId:'sample-book',catalogSheet:season+'品項統計',responseSheet:season+'預購回應',rulesFolderId:'sample-folder',...SOURCE_DEFAULTS,aliases:{},productColumns:{}},testedAt:new Date().toISOString()}))};}
@@ -67,12 +67,16 @@ function ordersView(){
   return filters('搜尋顧客、品項',[['all','全部'],['pending','待處理'],['done','已出貨']],[['new','填單時間新到舊'],['old','填單時間舊到新'],['name','依姓名']])+`<div class="count-line"><span>共 ${rows.length} 筆訂單</span><span>依原始訂單分列</span></div>`+
   (rows.map(o=>`<article class="order"><div class="order-top"><div><button class="order-name" data-order="${esc(o.id)}">${esc(o.name||'姓名待核對')}${icon('chevron-right')}</button><p class="order-meta">${esc(o.nickname||'')}${o.nickname?' · ':''}${o.manual?'手動訂單':esc(o.time||'填單時間未記錄')}</p></div><strong>${money(o.total)}</strong></div><div class="badges">${badge(o.status,o.status==='已出貨'?'good':o.status==='待核對'?'bad':'warn')}${progressBadges(o)}${o.manual?badge('手動追加'):''}${o.phoneSuffix?badge('手機末碼 '+o.phoneSuffix):''}</div><div class="order-items">${o.lines.map(l=>`<span class="order-item">${icon('package')}${esc(l.name)} × ${num(l.quantity)}</span>`).join('')}</div></article>`).join('')||empty('沒有符合條件的訂單'));
 }
-function stockTable(rows,expanded=false){if(expanded)return rows.length?`<div class="inventory-scroll" tabindex="0" aria-label="庫存明細"><div class="inventory-stock"><div class="stock-head"><span>品項</span><span>訂購量</span><span>庫存</span><span></span></div>${rows.map(p=>`<div class="stock-row"><button class="order-name stock-name" data-product="${esc(p.name)}">${esc(p.name)}</button><span class="num">${num(p.ordered)}</span><span class="num">${p.stock}</span><button class="icon-button" data-product="${esc(p.name)}" aria-label="查看 ${esc(p.name)}" title="查看品項">${icon('chevron-right')}</button></div>`).join('')}</div></div>`:empty('目前沒有符合條件的品項');return rows.length?`<div class="stock-head"><span>品項</span><span>待出</span><span>庫存</span><span>缺貨</span><span></span></div>${rows.map(p=>`<div class="stock-row"><button class="order-name stock-name" data-product="${esc(p.name)}">${esc(p.name)}</button><span class="num">${num(p.outstanding)}</span><span class="num">${p.stock}</span><span class="num ${p.shortage>0?'deficit':''}">${num(p.shortage)}</span><button class="icon-button" data-product="${esc(p.name)}" aria-label="查看 ${esc(p.name)}" title="查看品項">${icon('chevron-right')}</button></div>`).join('')}`:empty('目前沒有符合條件的品項');}
+function stockTable(rows,expanded=false){
+  if(expanded)return rows.length?`<div class="inventory-scroll" tabindex="0" aria-label="庫存明細"><div class="inventory-stock"><div class="stock-head"><span>品項</span><span>訂購量</span><span>全新</span><span>二手</span><span></span></div>${rows.map(p=>`<div class="stock-row"><button class="order-name stock-name" data-product="${esc(p.name)}">${esc(p.name)}</button><span class="num">${num(p.ordered)}</span><span class="num">${num(p.stock)}</span><span class="num">${num(p.usedStock)}</span><button class="icon-button" data-product="${esc(p.name)}" aria-label="查看 ${esc(p.name)}" title="查看品項">${icon('chevron-right')}</button></div>`).join('')}</div></div>`:empty('目前沒有符合條件的品項');
+  return rows.length?`<div class="stock-head"><span>品項</span><span>待出</span><span>庫存</span><span>缺貨</span><span></span></div>${rows.map(p=>`<div class="stock-row"><button class="order-name stock-name" data-product="${esc(p.name)}">${esc(p.name)}</button><span class="num">${num(p.outstanding)}</span><span class="num">${p.stock}</span><span class="num ${p.shortage>0?'deficit':''}">${num(p.shortage)}</span><button class="icon-button" data-product="${esc(p.name)}" aria-label="查看 ${esc(p.name)}" title="查看品項">${icon('chevron-right')}</button></div>`).join('')}`:empty('目前沒有符合條件的品項');
+}
 function inventoryView(){
   let rows=data.products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
   if(filter==='shortage')rows=rows.filter(p=>p.shortage>0);if(filter==='used')rows=rows.filter(p=>p.usedStock!==0);if(filter==='unknown')rows=rows.filter(p=>p.coverage==='unknown');
-  rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):sort==='stock'?a.stock-b.stock:(b.shortage??-1)-(a.shortage??-1));
-  return filters('搜尋品項',[['all','全部'],['shortage','缺貨'],['used','二手'],['unknown','待確認']],[['new','缺貨多到少'],['name','依名稱'],['stock','庫存少到多']])+stockTable(rows,true)+`<p class="read-only-note">${icon('info')} 庫存依歷年雲端金流計算。訂購量優先讀取本季統計表，空白時才依雲端訂單加總；出貨、待出、缺貨及核對原因可點開品項查看。二手量於品項明細分列。</p>`;
+  const totalStock=p=>(p.stock??0)+(p.usedStock??0);
+  rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):sort==='ordered-desc'?(b.ordered??-1)-(a.ordered??-1):sort==='stock-desc'?totalStock(b)-totalStock(a):sort==='stock'?totalStock(a)-totalStock(b):(b.shortage??-1)-(a.shortage??-1));
+  return filters('搜尋品項',[['all','全部'],['shortage','缺貨'],['used','二手'],['unknown','待確認']],[['new','缺貨多到少'],['ordered-desc','訂購量由多至少'],['stock-desc','庫存由多至少'],['name','依名稱'],['stock','庫存少到多']])+stockTable(rows,true)+`<p class="read-only-note">${icon('info')} 庫存依歷年雲端金流計算，庫存排序採全新與二手合計。訂購量優先讀取本季統計表，空白時才依雲端訂單加總；出貨、待出、缺貨及核對原因可點開品項查看。</p>`;
 }
 function rulesView(){
   let rows=data.products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
@@ -84,9 +88,19 @@ function rulesView(){
 function eventList(rows){return rows.length?rows.map(e=>`<article class="event ${e.read?'':'unread'}"><span class="event-icon">${icon(eventIcon[e.type]||'bell')}</span><div class="event-main"><button data-event="${esc(e.id)}">${esc(e.title)}</button><p>${esc(e.detail)}</p><p>${new Date(e.time).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</p></div></article>`).join(''):empty('目前沒有新通知');}
 function notificationsView(){return `<div class="section-heading"><span class="muted">最近 150 則</span><button id="read-all" class="text-button">${icon('check-check')}全部已讀</button></div><div class="segments"><button data-filter="all" class="${filter==='all'?'active':''}">全部</button><button data-filter="unread" class="${filter==='unread'?'active':''}">未讀</button></div>${eventList(events.filter(e=>filter!=='unread'||!e.read))}`;}
 function render(){
+  if(composingSearch&&document.activeElement?.id==='search'){chrome();return;}
   if(!data){$('#view').innerHTML=empty('尚無成功讀取資料，請檢查雲端連線設定');chrome();icons();return;}
-  const position=window.scrollY;$('#view').innerHTML=({overview,orders:ordersView,inventory:inventoryView,rules:rulesView,notifications:notificationsView}[page])();chrome();icons();
-  $('#search')?.addEventListener('input',e=>{const cursor=e.target.selectionStart;search=e.target.value;render();const s=$('#search');s?.focus();try{s?.setSelectionRange(cursor,cursor);}catch{}window.scrollTo(0,position);});
+  $('#view').innerHTML=({overview,orders:ordersView,inventory:inventoryView,rules:rulesView,notifications:notificationsView}[page])();chrome();icons();
+  const field=$('#search');
+  const applySearch=(input,force=false)=>{
+    if(!force&&input.value===search)return;
+    const cursor=input.selectionStart,position=window.scrollY;search=input.value;render();
+    const next=$('#search');next?.focus();try{next?.setSelectionRange(cursor,cursor);}catch{}window.scrollTo(0,position);
+  };
+  field?.addEventListener('compositionstart',()=>{composingSearch=true;});
+  field?.addEventListener('compositionend',e=>{composingSearch=false;applySearch(e.target,true);});
+  field?.addEventListener('blur',()=>{composingSearch=false;});
+  field?.addEventListener('input',e=>{if(!composingSearch&&!e.isComposing)applySearch(e.target);});
   $('#sort')?.addEventListener('change',e=>{sort=e.target.value;render();});
 }
 async function api(path,body,authToken=token){
