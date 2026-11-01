@@ -120,7 +120,7 @@ function productDetail(name,rulesOnly=false){const p=data.products.find(p=>p.nam
 }
 async function markRead(ids){if(!ids.length)return;if(!demo)await api('/read',{ids});events.forEach(e=>{if(ids.includes(e.id))e.read=true;});render();}
 async function settings(){
-  if(!data&&!token&&!demo){$('#login-status').textContent='請先登入，或開啟示範資料。';return;}
+  if(!data&&!token&&!demo){$('#login-status').textContent='請先使用授權的 Google 帳號登入。';return;}
   let value={preferences:{pushEnabled:false,quiet:true,quietStart:22,quietEnd:8,types:['order','change','shortage','rules','activity']},pushAvailable:false};
   if(!demo)try{value=await api('/preferences');}catch(e){setError(e.message);return;}
   const p=value.preferences;
@@ -130,7 +130,8 @@ async function settings(){
   const form=$('#prefs');const section=document.createElement('section');section.className='setting-section';section.innerHTML=`<h3>季別與來源</h3><button id="season-manage" type="button" class="setting-link"><span>${icon('calendar-range')}${seasonState.canManage?'管理季別來源':'查看季別'}</span>${icon('chevron-right')}</button>`;form.before(section);$('#season-manage').onclick=manageSeasons;icons();
 }
 function logout(){requestEpoch++;busy=false;token='';account='';data=null;events=[];demo=false;seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};clearInterval(timer);$('#detail').close();$('#workspace').hidden=true;$('#nav').hidden=true;$('#login').hidden=false;$('#view').replaceChildren();$('#login-status').textContent='已登出';window.google?.accounts.id.disableAutoSelect();icons();}
-$('#demo-enter').onclick=()=>{demo=true;seasonState=demoSources();selectedSeason='2026秋';data=demoData(selectedSeason);events=seasonEvents(selectedSeason);error='';showWorkspace();};
+const demoButton=$('#demo-enter');
+if(demoButton)demoButton.onclick=()=>{demo=true;seasonState=demoSources();selectedSeason='2026秋';data=demoData(selectedSeason);events=seasonEvents(selectedSeason);error='';showWorkspace();};
 $('#season-select').onchange=e=>changeSeason(e.target.value);
 $('#refresh').onclick=()=>refresh(true);$('#settings').onclick=settings;$('#detail-close').onclick=()=>$('#detail').close();
 $('#theme').onclick=()=>{document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';localStorage.setItem('d77-theme',document.documentElement.dataset.theme);};
@@ -159,3 +160,4 @@ async function initializeGoogle(){
   window.google.accounts.id.renderButton($('#google-login'),{theme:'outline',size:'large',text:'signin_with',locale:'zh_TW'});icons();
 }
 initializeGoogle();icons();window.addEventListener('load',icons);
+
