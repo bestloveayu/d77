@@ -71,7 +71,7 @@ function inventoryView(){
   let rows=data.products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
   if(filter==='shortage')rows=rows.filter(p=>p.shortage>0);if(filter==='used')rows=rows.filter(p=>p.usedStock!==0);if(filter==='unknown')rows=rows.filter(p=>p.coverage==='unknown');
   rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):sort==='stock'?a.stock-b.stock:(b.shortage??-1)-(a.shortage??-1));
-  return filters('搜尋品項',[['all','全部'],['shortage','缺貨'],['used','二手'],['unknown','待確認']],[['new','缺貨多到少'],['name','依名稱'],['stock','庫存少到多']])+stockTable(rows,true)+`<p class="read-only-note">${icon('info')} 庫存依歷年雲端金流計算。訂購量依雲端訂單加總；「待核對」表示出貨證據不足，未推算待出與缺貨。二手量於品項明細分列。</p>`;
+  return filters('搜尋品項',[['all','全部'],['shortage','缺貨'],['used','二手'],['unknown','待確認']],[['new','缺貨多到少'],['name','依名稱'],['stock','庫存少到多']])+stockTable(rows,true)+`<p class="read-only-note">${icon('info')} 庫存依歷年雲端金流計算。訂購量優先讀取本季統計表，空白時才依雲端訂單加總；訂單數量不一致或出貨證據不足時，待出與缺貨顯示「待核對」。二手量於品項明細分列。</p>`;
 }
 function rulesView(){
   let rows=data.products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));

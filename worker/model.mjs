@@ -171,15 +171,17 @@ export async function compose(input, config, now = new Date().toISOString()) {
   const money=ledger(input.ledger,config.season), files=input.rules||[];
   const products=items.map(item=>{
     const rows=orders.flatMap(o=>o.lines.filter(l=>l.name===item.name).map(l=>({order:o,line:l})));
-    const known=rows.every(x=>x.line.quantity!==null&&x.line.shipped!==null);
-    const ordered=rows.every(x=>x.line.quantity!==null)?rows.reduce((a,x)=>a+x.line.quantity,0):null;
+    const responseOrdered=rows.every(x=>x.line.quantity!==null)?rows.reduce((a,x)=>a+x.line.quantity,0):null;
+    const ordered=item.ordered===null?responseOrdered:Number.isInteger(item.ordered)&&item.ordered>=0?item.ordered:null;
+    const orderQuantityMismatch=ordered!==null&&(responseOrdered===null||ordered!==responseOrdered);
+    const known=!orderQuantityMismatch&&ordered!==null&&rows.every(x=>x.line.quantity!==null&&x.line.shipped!==null);
     const shipped=known?rows.reduce((a,x)=>a+x.line.shipped,0):null;
     const newStock=money.stock.get(item.name)||0;
     const usedStock=[...money.stock].filter(([key])=>/二手/.test(key)&&norm(key.replace(/(?:\(|（)?二手(?:\)|）)?/g,''))===norm(item.name)).reduce((a,[,v])=>a+v,0);
     const rules=files.filter(f=>norm(f.name.replace(/_(?:中文規則書?|中文卡牌|卡表).*$/,''))===norm(item.name)).map(f=>({name:f.name,url:safeUrl(f.webViewLink||`https://drive.google.com/file/d/${encodeURIComponent(f.id)}/view`),cards:/中文卡牌|卡表/.test(f.name)}));
     if(item.ruleUrl&&!rules.some(f=>f.url===item.ruleUrl))rules.push({name:'規則檔',url:item.ruleUrl,cards:false});
     const outstanding=known?Math.max(0,ordered-shipped):null;
-    return {...item,ordered,shipped,outstanding,stock:newStock,usedStock,shortage:known?Math.max(0,outstanding-newStock):null,rules,
+    return {...item,ordered,responseOrdered,orderQuantityMismatch,orderQuantitySource:item.ordered===null?'responses':'catalog',shipped,outstanding,stock:newStock,usedStock,shortage:known?Math.max(0,outstanding-newStock):null,rules,
       customers:rows.map(x=>({id:x.order.id,name:x.order.name,mailed:x.line.mailed})),coverage:known?'confirmed':'unknown'};
   });
   for(const order of orders){order.total=order.lines.every(l=>l.quantity!==null&&l.price!==null)?order.lines.reduce((a,l)=>a+l.quantity*l.price,0):null;

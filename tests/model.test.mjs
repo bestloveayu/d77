@@ -1,5 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+test('catalog ordered quantity is authoritative and unmatched demand cannot look fully shipped',async()=>{
+  const source=input();source.catalog[1][0]='十三鬼狩隊';source.catalog[1][3]=6;
+  source.responses[0][5]='【十三鬼狩】2人，890元 [請勾選數量]';
+  const p=(await compose(source,config)).products[0];
+  assert.equal(p.ordered,6);assert.equal(p.responseOrdered,0);
+  assert.equal(p.orderQuantityMismatch,true);assert.equal(p.shipped,null);assert.equal(p.outstanding,null);assert.equal(p.shortage,null);
+});
+test('manual wish quantities in catalog survive a zero form count',async()=>{
+  const source=input();source.responses=[source.responses[0]];source.catalog[1][3]=1;
+  const p=(await compose(source,config)).products[0];assert.equal(p.ordered,1);assert.equal(p.outstanding,null);
+});
 test('local form prefix normalization binds cloud shipment and proves purchase without guessing missing records',async()=>{
   const source=input();source.responses[0][5]='2026GM [R.遊戲甲 2-3人：100元]';
   const origin=['2026秋','book',config.responseSheet,2,5];
@@ -48,7 +59,7 @@ test('matrix options retain their own name and price rather than the shared ques
 });
 import {compose,changes,decodeTeam,digest,safeUrl,parseResponses,catalog,ledger} from '../worker/model.mjs';
 const config={season:'2026秋',spreadsheetId:'book',responseSheet:'2026秋預購回應',aliases:{'A遊戲甲':'遊戲甲'}};
-const input=()=>({catalog:[['中文名稱','外文名稱','代購(台)','訂購量','預約量','攤位','規則書'],['遊戲甲','Game A',100,3,3,'57','']],
+const input=()=>({catalog:[['中文名稱','外文名稱','代購(台)','訂購量','預約量','攤位','規則書'],['遊戲甲','Game A',100,2,3,'57','']],
   responses:[['時間戳記','真實姓名','電子郵件地址','手機號碼','FB暱稱','2026GM [A遊戲甲 2-3人：100元]'],['2026/11/1 上午 8:00','測試本名','test@example.com','0912345678','小測試',2]],
   ledger:[['品項','增減數量','東收入','于收入','東支出','于支出','季別'],['遊戲甲',3,'','','',300,'2025秋'],['遊戲甲',-1,100,'','','','2026秋']],
   team:{teamId:'team',resources:[],operations:[]},documents:{teamId:'team',documents:[]},rules:[]});
@@ -75,7 +86,7 @@ test('manual tombstones excluded and stable manual line IDs used',async()=>{
   const result=await compose(source,config);assert.equal(result.orders.length,2);assert.equal(result.orders[1].manual,true);
 });
 test('invalid quantities not silently ignored',async()=>{
-  const source=input();source.responses[1][5]='我要兩盒';const result=await compose(source,config);assert.equal(result.orders[0].total,null);assert.equal(result.products[0].ordered,null);
+  const source=input();source.responses[1][5]='我要兩盒';const result=await compose(source,config);assert.equal(result.orders[0].total,null);assert.equal(result.products[0].ordered,2);assert.equal(result.products[0].responseOrdered,null);assert.equal(result.products[0].outstanding,null);
 });
 test('Drive cards and rule file links; unsafe URLs rejected',async()=>{
   const source=input();source.rules=[{id:'r',name:'遊戲甲_中文規則.pdf'},{id:'c',name:'遊戲甲_中文卡牌.pdf'}];const result=await compose(source,config);assert.equal(result.products[0].rules.length,2);assert.equal(result.products[0].rules[1].cards,true);
