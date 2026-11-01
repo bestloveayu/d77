@@ -10,13 +10,14 @@ export function installSwipe(root,{current,enabled,navigate}){
     const surface=root.querySelector('#view')||root;
     if(typeof surface.animate!=='function'||matchMedia('(prefers-reduced-motion: reduce)').matches){navigate(next);return;}
     animating=true;
+    const overflow=root.style.overflowX;root.style.overflowX='clip';
     const direction=dx<0?-1:1;
     try{
       await surface.animate([{transform:'translateX(0)',opacity:1},{transform:`translateX(${direction*45}px)`,opacity:0}],{duration:130,easing:'ease-in'}).finished;
       navigate(next);
       await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
       await surface.animate([{transform:`translateX(${-direction*45}px)`,opacity:0},{transform:'translateX(0)',opacity:1}],{duration:190,easing:'ease-out'}).finished;
-    }finally{animating=false;}
+    }finally{root.style.overflowX=overflow;animating=false;}
   }
   const blocked=target=>{
     if(!(target instanceof Element)||target.closest('input,textarea,select,button,a,[contenteditable=true],dialog'))return true;
