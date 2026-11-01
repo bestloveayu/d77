@@ -5,7 +5,7 @@ export async function digest(value) {
 }
 const n = v => {
   if (v === '' || v == null) return null;
-  const value = Number(String(v).replace(/,/g, ''));
+  const value = Number(String(v).replace(/[,$\s元NT¥￥]/g, ''));
   return Number.isFinite(value) ? value : null;
 };
 function table(rows, required) {
@@ -111,7 +111,7 @@ export function ledger(rows, season) {
   // Inventory is all-history; finance is the selected season only.
   for (const r of records) {
     const name=String(r.get('品項')).trim(), raw=r.get('增減數量'), q=raw===''?0:n(raw);
-    if (q===null) {issues.push('金流第 '+r.row+' 列數量無法辨識');continue;}
+    if (q===null) issues.push('金流第 '+r.row+' 列數量無法辨識');
     if (name && q) stock.set(name,(stock.get(name)||0)+q);
     if (String(r.get('季別')).trim()!==season) continue;
     const values=['東收入','于收入','東支出','于支出'].map(k => r.get(k)===''?0:n(r.get(k)));
