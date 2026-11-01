@@ -39,10 +39,18 @@ const {spawn}=require('node:child_process');
   await swipe('#page-title',100);await page.waitForURL('**/#notifications');
   await swipe('#page-title',-100,200);assert(page.url().endsWith('#notifications'),'vertical scrolling must not navigate');
   await page.locator('#nav [data-page=inventory]').click();
-  assert((await page.locator('.stock-head').innerText()).includes('缺貨'));
   assert((await page.locator('.stock-head').innerText()).includes('訂購量'));
-  assert((await page.locator('.stock-head').innerText()).includes('已確認出貨'));
+  assert(!(await page.locator('.stock-head').innerText()).includes('已確認出貨'));
+  assert(!(await page.locator('.inventory-stock').innerText()).includes('待核對'));
   await swipe('#search',-100);assert(page.url().endsWith('#inventory'),'search blocks swipe');
+  for(const width of [320,390,1440]){
+    await page.setViewportSize({width,height:900});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.screenshot({path:`test-results/inventory-simple-${width}.png`,fullPage:true});
+  }
+  await page.locator('[data-product]').first().click();
+  assert((await page.locator('#detail').innerText()).includes('已確認出貨'));
+  assert((await page.locator('#detail').innerText()).includes('待出'));
   assert.deepEqual(errors,[]);console.log('PASS finance alignment and order progress at 320/390/1440 without overflow. Synthetic data only.');
 }finally{await browser.close();server.kill();}})().catch(e=>{console.error(e);process.exitCode=1;});
 
