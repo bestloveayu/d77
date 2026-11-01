@@ -53,9 +53,10 @@ function quantity(value) {
   return valueN <= 999 ? valueN : null;
 }
 function headerProduct(header) {
-  const title = String(header).match(/【([^】]+)】/)?.[1];
   const bracket = [...String(header).matchAll(/\[([^\]]+)\]/g)].at(-1)?.[1];
-  const source = title ? String(header) : bracket || String(header);
+  const prompt = bracket && /^(?:請勾選數量|row\s*1)$/i.test(bracket.trim());
+  const source = bracket && !prompt ? bracket : String(header).replace(/\s*\[[^\]]+\]\s*$/, '');
+  const title = source.match(/【([^】]+)】/)?.[1];
   const price = source.match(/(?:[:：]|NT\$|\$)\s*([\d,]+(?:\.\d+)?)/) || source.match(/([\d,]+(?:\.\d+)?)\s*元/);
   if (!bracket && !price && !source.includes('【')) return null;
   const name = title || source.split(/\s+\d+\s*[-–~〜～]\s*\d+\s*人|\s+\d+\s*人|[:：]/)[0].trim();
