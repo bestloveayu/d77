@@ -45,7 +45,7 @@ const {spawn}=require('node:child_process');
   await page.waitForTimeout(350);
   await swipe('#page-title',-100,200);assert(page.url().endsWith('#transactions'),'vertical scrolling must not navigate');
   await page.locator('#nav [data-page=inventory]').click();
-  assert((await page.locator('.stock-head').innerText()).includes('訂購量'));
+  assert((await page.locator('.stock-head').innerText()).includes('待出貨量'));
   assert(!(await page.locator('.stock-head').innerText()).includes('已確認出貨'));
   assert(!(await page.locator('.inventory-stock').innerText()).includes('待核對'));
   await swipe('#search',-100);assert(page.url().endsWith('#inventory'),'search blocks swipe');

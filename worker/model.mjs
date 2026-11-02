@@ -142,6 +142,7 @@ export function ledger(rows, season) {
     const actor=['小東','于正'].filter((_,i)=>values[i]||values[i+2]).join('、');
     transactions.push({id:'row-'+r.row,sourceRow:r.row,transactionId:String(r.get('交易編號')).trim(),time:String(r.get('時間戳記')||r.get('日期')),kind,subject:String(r.get('顧客姓名')||r.get('客戶姓名')||r.get('姓名')||parts[1]||''),name,quantity:q,amount:cash,actor,note,income:values[0]===null||values[1]===null?null:values[0]+values[1],cost:values[2]===null||values[3]===null?null:values[2]+values[3],settlement:settlementValue});
     transactions.at(-1).salesChannel=salesChannel;
+    transactions.at(-1).cashByPerson={east:{income:values[0],cost:values[2]},yu:{income:values[1],cost:values[3]}};
     if (values.some(v=>v===null)) {issues.push('金流第 '+r.row+' 列金額無法辨識');eastDue=null;continue;}
     income+=values[0]+values[1];cost+=values[2]+values[3];
     const settlement=r.get('結餘(東給于)')===''?0:n(r.get('結餘(東給于)'));
@@ -218,7 +219,7 @@ export async function compose(input, config, now = new Date().toISOString()) {
     }
   }
   const unmatchedShipments=[];
-  const demand=new Map(items.map(item=>[item,{new:0,used:0,newInvalid:false,usedInvalid:false}]));
+  const demand=new Map(items.map(item=>[item,{new:0,used:0,newInvalid:false,usedInvalid:false,newTransactionIds:new Set(),usedTransactionIds:new Set()}]));
   for(const tx of money.transactions){
     if(tx.kind!=='銷貨收入'||tx.salesChannel==='general'||tx.quantity===0)continue;
     const {used,match,candidates}=identify(tx.name);
@@ -229,6 +230,7 @@ export async function compose(input, config, now = new Date().toISOString()) {
     if(tx.salesChannel==='unknown')money.issues.push('金流第 '+tx.sourceRow+' 列沿用未標示通路的出貨');
     for(const item of candidates){
       const d=demand.get(item),key=used?'used':'new';
+      if(match)d[key+'TransactionIds'].add(tx.id);
       if(!match||!Number.isInteger(tx.quantity))d[key+'Invalid']=true;
       else d[key]-=tx.quantity;
     }
@@ -252,6 +254,7 @@ export async function compose(input, config, now = new Date().toISOString()) {
     const usedShortage=usedOutstanding!==null&&usedStock!==null?Math.max(0,usedOutstanding-usedStock):null;
     const shortageEstimate=false;
     return {...item,ordered,responseOrdered,orderQuantityMismatch,orderQuantitySource:item.ordered===null?'responses':'catalog',shipped,outstanding,shipmentSource:'ledger',usedShipped,usedOutstanding,usedShortage,stock:newStock,usedStock,shortage:known&&newStock!==null?Math.max(0,outstanding-newStock):null,shortageEstimate,
+      shipmentTransactionIds:[...d.newTransactionIds],usedShipmentTransactionIds:[...d.usedTransactionIds],
       stockUpdatedAt:stockUpdate?.at||'',stockUpdatedTime:stockUpdate?.time??null,stockUpdatedRow:stockUpdate?.row??null,rules,
       customers:rows.map(x=>({id:x.order.id,name:x.order.name,mailed:x.line.mailed})),coverage:known&&!inv.newInvalid&&!inv.usedInvalid&&(item.usedOrdered===null||usedShortage!==null)?'confirmed':'unknown'};
   });
@@ -266,7 +269,7 @@ export async function compose(input, config, now = new Date().toISOString()) {
     delete order.email;order.phoneSuffix=order.phone?.slice(-3)||'';delete order.phone;
   }
   return {season:config.season,updatedAt:now,followUpVersion:1,inventoryVersion:3,stockCalculationVersion:1,unmatchedShipments,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
-    transactions:money.transactions,issues:money.issues,operations:team.operations.filter(o=>o.season===config.season).map(o=>({id:o.id,actor:o.actor,kind:o.kind,status:o.status,time:o.updatedAt||o.createdAt})),
+    ledgerDetailVersion:1,transactions:money.transactions,issues:money.issues,operations:team.operations.filter(o=>o.season===config.season).map(o=>({id:o.id,actor:o.actor,kind:o.kind,status:o.status,time:o.updatedAt||o.createdAt})),
     sourceStatus:{catalog:'ok',responses:'ok',ledger:'ok',team:'ok',documents:'ok',rules:'ok'},
     summary:{orders:orders.length,attention:orders.filter(needsAttention).length,registrationPending:orders.filter(o=>o.followUp.kind==='registration').length,rulesPending:orders.filter(o=>o.followUp.kind==='rules').length,shortages:products.filter(p=>p.shortage>0||p.usedShortage>0).length,unknownStock:products.filter(p=>p.coverage==='unknown').length,
       unmatchedShipments:unmatchedShipments.length,rulesReady:products.filter(p=>p.rules.length).length,rulesTotal:products.length}};

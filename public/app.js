@@ -6,6 +6,7 @@ import {parseTimestamp} from './timestamp.js?v=20261102.3';
 import {installSwipe} from './swipe.js?v=20261102.3';
 import {createPushClient} from './push.js?v=20261102.1';
 import {classifyFollowUp,awaitingPurchase,notificationChoices,notificationTypes} from './order-followup.js?v=20261103.1';
+import {filterTransactions,transactionTotals,transactionAmount,personCash} from './transaction-summary.js?v=20261103.2';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
 const deviceStorage={get(key){try{return localStorage.getItem(key);}catch{return null;}},set(key,value){try{localStorage.setItem(key,value);return true;}catch{return false;}},remove(key){try{localStorage.removeItem(key);}catch{}}};
 const icon=name=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
@@ -20,6 +21,7 @@ const followUp=o=>o.followUp||classifyFollowUp(o);
 let data=null,events=[],token='',account='',demo=false,stale=false,busy=false,error='',page='overview',filter='all',search='',sort='new',timer;
 let selectedSeason=deviceStorage.get('d77-season')||'',requestEpoch=0,authGeneration=0,composingSearch=false;
 let seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};
+let transactionPerson='all',metricNavigationPending=false,dialogSnapshot=null;
 const demoEventStore=new Map();
 function demoSources(){return {revision:0,defaultSeason:'2026秋',canManage:true,seasons:['2026秋','2026春'].map(season=>({season,config:{season,spreadsheetId:'sample-book',catalogSheet:season+'品項統計',responseSheet:season+'預購回應',rulesFolderId:'sample-folder',...SOURCE_DEFAULTS,aliases:{},productColumns:{}},testedAt:new Date().toISOString()}))};}
 function demoData(season){const value=demoSnapshot();value.season=season;if(season!=='2026秋'){value.orders=[];value.products=[];value.summary={orders:0,attention:0,shortages:0,unknownStock:0,rulesReady:0,rulesTotal:0};value.finance={income:0,cost:0,profit:0};}return value;}
@@ -61,9 +63,9 @@ function overview(){
   </section>
   ${finance}
   <section class="section">${heading('缺貨清單',`<button class="text-button" data-go="inventory">查看全部 ${icon('chevron-right')}</button>`)}${stockTable(low)}</section>
-  <div class="metrics">${stats.map(([i,label,count,kind,target,targetFilter])=>`<button class="metric ${kind}" data-go="${target}" data-filter="${targetFilter}">${icon(i)}<span><span class="metric-label">${label==='待出貨/待下單'?'<span>待出貨 /</span><span>待下單</span>':label}</span><strong>${count}</strong></span></button>`).join('')}</div>`;
+  <div class="metrics">${stats.map(([i,label,count,kind,target,targetFilter])=>`<button class="metric ${kind}" data-go="${target}" data-filter="${targetFilter}"><span class="metric-label">${icon(i)}<span>${label}</span></span><span class="metric-value"><strong>${count}</strong><span class="metric-chevron">${icon('chevron-right')}</span></span></button>`).join('')}</div>`;
 }
-function filters(placeholder,options,sortOptions,className=''){return `<div class="filters"><label class="search">${icon('search')}<input id="search" type="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${esc(search)}" autocomplete="off"></label>${sortOptions?`<select id="sort" aria-label="排序">${sortOptions.map(([value,label])=>`<option value="${value}" ${sort===value?'selected':''}>${label}</option>`).join('')}</select>`:''}</div><div class="segments ${className}">${options.map(([value,label])=>`<button data-filter="${value}" class="${filter===value?'active':''}" aria-pressed="${filter===value}">${label}</button>`).join('')}</div>`;}
+function filters(placeholder,options,sortOptions,className='',extra=''){return `<div class="filters"><label class="search">${icon('search')}<input id="search" type="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${esc(search)}" autocomplete="off"></label>${sortOptions?`<select id="sort" aria-label="排序">${sortOptions.map(([value,label])=>`<option value="${value}" ${sort===value?'selected':''}>${label}</option>`).join('')}</select>`:''}${extra}</div><div class="segments ${className}">${options.map(([value,label])=>`<button data-filter="${value}" class="${filter===value?'active':''}" aria-pressed="${filter===value}">${label}</button>`).join('')}</div>`;}
 const parseTime=value=>parseTimestamp(value)??0;
 function ordersView(){
   let rows=data.orders.filter(o=>(o.name+' '+(o.nickname||'')+' '+o.lines.map(l=>l.name).join(' ')).toLowerCase().includes(search.toLowerCase()));
@@ -75,16 +77,16 @@ function ordersView(){
 }
 function stockWarnings(p){return `${p.shortage>0?`<small class="shortage-estimate">${p.shortageEstimate?'缺貨估算':'全新缺貨'} ${p.shortage} 盒</small>`:''}${p.usedShortage>0?`<small class="shortage-estimate">二手缺貨 ${p.usedShortage} 盒</small>`:''}`;}
 function stockTable(rows,expanded=false){
-  if(expanded)return rows.length?`<div class="inventory-scroll" tabindex="0" aria-label="庫存明細"><div class="inventory-stock"><div class="stock-head"><span>品項</span><span>訂購量</span><span>全新</span><span>二手</span><span></span></div>${rows.map(p=>`<div class="stock-row"><button class="order-name stock-name" data-product="${esc(p.name)}"><span>${esc(p.name)}</span>${stockWarnings(p)}</button><span class="num">${num(p.ordered)}</span><span class="num ${p.shortage>0?'deficit':''}">${num(p.stock)}</span><span class="num ${p.usedShortage>0?'deficit':''}">${num(p.usedStock)}</span><button class="icon-button" data-product="${esc(p.name)}" aria-label="查看 ${esc(p.name)}" title="查看品項">${icon('chevron-right')}</button></div>`).join('')}</div></div>`:empty('目前沒有符合條件的品項');
+  if(expanded)return rows.length?`<div class="inventory-scroll" tabindex="0" aria-label="庫存明細"><div class="inventory-stock"><div class="stock-head"><span>品項</span><span>待出貨量</span><span>全新</span><span>二手</span><span></span></div>${rows.map(p=>`<div class="stock-row"><button class="order-name stock-name" data-product="${esc(p.name)}"><span>${esc(p.name)}</span>${stockWarnings(p)}</button><span class="num">${num(p.outstanding)}${p.usedOutstanding!=null&&p.usedOrdered>0?`<small>二手 ${p.usedOutstanding}</small>`:''}</span><span class="num ${p.shortage>0?'deficit':''}">${num(p.stock)}</span><span class="num ${p.usedShortage>0?'deficit':''}">${num(p.usedStock)}</span><button class="icon-button" data-product="${esc(p.name)}" aria-label="查看 ${esc(p.name)}" title="查看品項">${icon('chevron-right')}</button></div>`).join('')}</div></div>`:empty('目前沒有符合條件的品項');
   return rows.length?`<div class="stock-head"><span>品項</span><span>待出</span><span>庫存</span><span>缺貨</span><span></span></div>${rows.map(p=>`<div class="stock-row"><button class="order-name stock-name" data-product="${esc(p.name)}"><span>${esc(p.name)}</span>${stockWarnings(p)}</button><span class="num">${num(p.outstanding)}</span><span class="num">${num(p.stock)}</span><span class="num ${p.shortage>0||p.usedShortage>0?'deficit':''}">${num(p.shortage)}${p.usedShortage>0?`<small>二手 ${p.usedShortage}</small>`:''}</span><button class="icon-button" data-product="${esc(p.name)}" aria-label="查看 ${esc(p.name)}" title="查看品項">${icon('chevron-right')}</button></div>`).join('')}`:empty('目前沒有符合條件的品項');
 }
 function inventoryView(){
   let rows=data.products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
   if(filter==='shortage')rows=rows.filter(p=>p.shortage>0||p.usedShortage>0);if(filter==='used')rows=rows.filter(p=>p.usedStock!==0||p.usedOrdered>0||p.usedShipped>0);if(filter==='unknown')rows=rows.filter(p=>p.coverage==='unknown');
   const totalStock=p=>(p.stock??0)+(p.usedStock??0);
-  rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):sort==='ordered-desc'?(b.ordered??-1)-(a.ordered??-1):sort==='stock-desc'?totalStock(b)-totalStock(a):sort==='stock'?totalStock(a)-totalStock(b):sort==='shortage'?(b.shortage??-1)-(a.shortage??-1):(b.stockUpdatedTime||0)-(a.stockUpdatedTime||0)||(b.stockUpdatedRow||0)-(a.stockUpdatedRow||0));
+  rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):sort==='outstanding-desc'?(b.outstanding??-1)-(a.outstanding??-1):sort==='ordered-desc'?(b.ordered??-1)-(a.ordered??-1):sort==='stock-desc'?totalStock(b)-totalStock(a):sort==='stock'?totalStock(a)-totalStock(b):sort==='shortage'?(b.shortage??-1)-(a.shortage??-1):(b.stockUpdatedTime||0)-(a.stockUpdatedTime||0)||(b.stockUpdatedRow||0)-(a.stockUpdatedRow||0));
   const reconcile=data.unmatchedShipments?.length?`<button id="inventory-reconcile" class="alert-row warn">${icon('triangle-alert')}<span class="text"><strong>${data.unmatchedShipments.length} 筆金流出貨未對應本季品項</strong><small>這些出貨尚未納入下列數量</small></span>${icon('chevron-right')}</button>`:'';
-  return filters('搜尋品項',[['all','全部'],['shortage','缺貨'],['used','二手'],['unknown','待確認']],[['new','更新時間新到舊'],['shortage','缺貨多到少'],['ordered-desc','訂購量由多至少'],['stock-desc','庫存由多至少'],['name','依名稱'],['stock','庫存少到多']])+reconcile+stockTable(rows,true)+`<p class="read-only-note">${icon('info')} 待出量＝訂購量－本季金流出貨量；缺貨＝待出量－全新庫存，最低為 0。二手獨立計算，不與全新互抵。</p>`;
+  return filters('搜尋品項',[['all','全部'],['shortage','缺貨'],['used','二手'],['unknown','待確認']],[['new','更新時間新到舊'],['shortage','缺貨多到少'],['outstanding-desc','待出貨量由多至少'],['ordered-desc','訂購量由多至少'],['stock-desc','庫存由多至少'],['name','依名稱'],['stock','庫存少到多']])+reconcile+stockTable(rows,true)+`<p class="read-only-note">${icon('info')} 待出量＝訂購量－本季金流出貨量；缺貨＝待出量－全新庫存，最低為 0。二手獨立計算，不與全新互抵。</p>`;
 }
 function rulesView(){
   let rows=data.products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
@@ -96,13 +98,18 @@ function rulesView(){
 function eventList(rows){return rows.length?rows.map(e=>`<article class="event ${e.read?'':'unread'}"><span class="event-icon">${icon(eventIcon[e.type]||'bell')}</span><div class="event-main"><button data-event="${esc(e.id)}">${esc(e.title)}</button><p>${esc(e.detail)}</p><p>${new Date(e.time).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</p></div></article>`).join(''):empty('目前沒有新通知');}
 function notificationsView(){return `<button class="text-button" data-go="overview">${icon('arrow-left')}返回營運總覽</button><div class="section-heading"><span class="muted">最近 150 則動態</span><button id="read-all" class="text-button">${icon('check-check')}全部已讀</button></div><div class="segments"><button data-filter="all" class="${filter==='all'?'active':''}">全部</button><button data-filter="unread" class="${filter==='unread'?'active':''}">未讀</button></div>${eventList(events.filter(e=>filter!=='unread'||!e.read))}`;}
 function transactionsView(){
-  let rows=(data.transactions||[]).filter(t=>[t.name,t.subject,t.note,t.actor,t.transactionId].join(' ').toLowerCase().includes(search.toLowerCase())&&(filter==='all'||t.kind===filter));
+  let rows=filterTransactions(data.transactions||[],{search,type:filter,person:transactionPerson});
   rows=[...rows].sort((a,b)=>(parseTime(a.time)-parseTime(b.time)||a.sourceRow-b.sourceRow)*(sort==='old'?1:-1));
-  return financeSummary()+filters('搜尋品項、顧客、名目或交易編號',[['all','全部'],...['進貨成本','銷貨收入','其他成本','其他收入','結算','未分類'].map(x=>[x,x])],[['new','時間新到舊'],['old','時間舊到新']],'transaction-filters')+`<p class="count-line">${esc(data.season)} · 共 ${rows.length} 筆明細</p>`+(rows.map(t=>`<article class="order"><div class="order-top"><div><button class="order-name" data-transaction="${esc(t.id)}">${esc(t.subject||t.name||'—')}${icon('chevron-right')}</button><p class="order-meta">${esc(t.time||'時間未記錄')} · ${esc(t.actor||'收付款人未記錄')}</p></div><strong>${money(t.amount)}</strong></div><div class="badges">${badge(t.kind,['銷貨收入','其他收入'].includes(t.kind)?'good':['進貨成本','其他成本'].includes(t.kind)?'warn':'')}${t.name?badge(t.name):''}${t.quantity?badge('數量 '+t.quantity):''}</div></article>`).join('')||empty(data.transactions?'沒有符合條件的交易':'尚未取得交易明細，請重新讀取雲端'));
+  const totals=transactionTotals(rows,transactionPerson),personLabel={all:'全部收付款人',east:'小東',yu:'于正'}[transactionPerson];
+  const personSelect=`<select id="transaction-person" aria-label="收付款人">${[['all','全部收付款人'],['east','小東'],['yu','于正']].map(([value,label])=>`<option value="${value}" ${transactionPerson===value?'selected':''}>${label}</option>`).join('')}</select>`;
+  const subtotal=`<section class="transaction-subtotal" aria-label="篩選小計"><h3>篩選小計 · ${totals.count} 筆 · ${personLabel}</h3><div class="transaction-subtotal-values"><div><small>收入</small><strong>${money(totals.income)}</strong></div><div><small>成本</small><strong>${money(totals.cost)}</strong></div><div><small>結餘</small><strong>${money(totals.profit)}</strong></div></div>${totals.profit==null?'<p class="notice">部分金額尚無可核對資料，小計未當成零。</p>':''}</section>`;
+  return financeSummary()+filters('搜尋品項、顧客、名目或交易編號',[['all','全部'],...['進貨成本','銷貨收入','其他成本','其他收入','結算','未分類'].map(x=>[x,x])],[['new','時間新到舊'],['old','時間舊到新']],'transaction-filters',personSelect)+subtotal+`<p class="count-line">${esc(data.season)} · 共 ${rows.length} 筆明細</p>`+(rows.length?transactionList(rows,transactionPerson):empty(data.transactions?'沒有符合條件的交易':'尚未取得交易明細，請重新讀取雲端'));
 }
-function transactionDetail(id){
-  const t=data.transactions?.find(t=>t.id===id);if(!t)return;
-  openDialog('交易明細',`<div class="badges">${badge(t.kind)}</div><h3>${esc(t.subject||t.name||'—')}</h3><p>${esc(t.time||'時間未記錄')} · ${esc(t.actor||'收付款人未記錄')}</p><p>品項：${esc(t.name||'—')}　數量：${num(t.quantity)}</p>${t.kind==='結算'?`<p>交易金額：${money(t.amount)}</p>`:''}<div class="finance"><div><small>收入</small><strong>${money(t.income)}</strong></div><div><small>成本</small><strong>${money(t.cost)}</strong></div></div><p class="transaction-note">${esc(t.note||'無備註')}</p><p class="transaction-id">交易編號：${esc(t.transactionId||'未記錄')}<br>來源列：${t.sourceRow}</p>`);
+function transactionList(rows,person='all'){return rows.map(t=>`<article class="order"><div class="order-top"><div><button class="order-name" data-transaction="${esc(t.id)}" data-person="${person}">${esc(t.subject||t.name||'—')}${icon('chevron-right')}</button><p class="order-meta">${esc(t.time||'時間未記錄')} · ${esc(t.actor||'收付款人未記錄')}</p></div><strong>${money(transactionAmount(t,person))}</strong></div><div class="badges">${badge(t.kind,['銷貨收入','其他收入'].includes(t.kind)?'good':['進貨成本','其他成本'].includes(t.kind)?'warn':'')}${t.name?badge(t.name):''}${t.quantity?badge('數量 '+t.quantity):''}</div></article>`).join('');}
+function transactionDetail(id,person='all',snapshot=data){
+  const t=snapshot?.transactions?.find(t=>t.id===id);if(!t)return;
+  const own=personCash(t,person),selected=['east','yu'].includes(person)?`<h3>${person==='east'?'小東':'于正'}收付款</h3><p>收入 ${money(own.income)} · 成本 ${money(own.cost)}</p><h3>完整交易</h3>`:'';
+  openDialog('交易明細',`${selected}<div class="badges">${badge(t.kind)}</div><h3>${esc(t.subject||t.name||'—')}</h3><p>${esc(t.time||'時間未記錄')} · ${esc(t.actor||'收付款人未記錄')}</p><p>品項：${esc(t.name||'—')}　數量：${num(t.quantity)}</p>${t.kind==='結算'?`<p>交易金額：${money(t.amount)}</p>`:''}<div class="finance"><div><small>收入</small><strong>${money(t.income)}</strong></div><div><small>成本</small><strong>${money(t.cost)}</strong></div></div><p class="transaction-note">${esc(t.note||'無備註')}</p><p class="transaction-id">交易編號：${esc(t.transactionId||'未記錄')}<br>來源列：${t.sourceRow}</p>`,snapshot);
 }
 function render(){
   if(composingSearch&&document.activeElement?.id==='search'){chrome();return;}
@@ -119,6 +126,7 @@ function render(){
   field?.addEventListener('blur',()=>{composingSearch=false;});
   field?.addEventListener('input',e=>{if(!composingSearch&&!e.isComposing)applySearch(e.target);});
   $('#sort')?.addEventListener('change',e=>{sort=e.target.value;render();});
+  $('#transaction-person')?.addEventListener('change',e=>{transactionPerson=e.target.value;render();});
 }
 async function api(path,body,authToken=token){
   if(!config.apiBase||!authToken)throw new Error('請先完成登入與雲端設定');
@@ -141,13 +149,13 @@ async function refresh(force=false){
   }catch(e){if(epoch===requestEpoch){error=e.name==='TimeoutError'?'連線逾時，保留本季上次成功資料':e.message;stale=true;}}
   finally{if(epoch===requestEpoch){busy=false;render();}}
 }
-async function changeSeason(season){requestEpoch++;busy=false;selectedSeason=season;deviceStorage.set('d77-season',season);data=null;events=[];filter='all';search='';sort='new';error='';await refresh();}
+async function changeSeason(season){requestEpoch++;busy=false;selectedSeason=season;deviceStorage.set('d77-season',season);data=null;events=[];filter='all';search='';sort='new';transactionPerson='all';error='';$('#detail').close();await refresh();}
 function manageSeasons(){showSeasonSettings({demo,getState:()=>seasonState,api,openDialog,icons,
   saveDemo:({config,makeDefault})=>{seasonState={...seasonState,revision:seasonState.revision+1,defaultSeason:makeDefault||!seasonState.defaultSeason?config.season:seasonState.defaultSeason,seasons:[...seasonState.seasons.filter(s=>s.season!==config.season),{season:config.season,config,testedAt:new Date().toISOString()}]};},
   onSaved:async season=>{if(!demo)seasonState=await api('/seasons');await changeSeason(season);}
 });}
-function go(target,newFilter='all'){filter=newFilter;search='';sort='new';if(page===target)render();else location.hash=target;}
-function openDialog(title,body){$('#detail-title').textContent=title;$('#detail-body').innerHTML=body;icons();if(!$('#detail').open)$('#detail').showModal();}
+function go(target,newFilter='all'){filter=newFilter;search='';sort='new';transactionPerson='all';if(page===target)render();else location.hash=target;}
+function openDialog(title,body,snapshot=data){dialogSnapshot=snapshot;$('#detail-title').textContent=title;$('#detail-body').innerHTML=body;icons();if(!$('#detail').open)$('#detail').showModal();}
 function orderDetail(id){const o=data.orders.find(o=>o.id===id);if(!o)return;
   openDialog(o.name,`<div class="badges">${badge(o.status,o.status==='已出貨'?'good':'warn')}${badge('總額 '+money(o.total))}${progressBadges(o)}</div><p class="read-only-note">${esc(o.time||'')} ${o.sourceRow?'· 來源列 '+o.sourceRow:''}</p>${o.lines.map(l=>{
     const p=data.products.find(p=>p.name===l.name);return `<div class="detail-line"><strong>${esc(l.name)}</strong><span class="amount">${num(l.quantity)} × ${money(l.price)}</span><div class="badges">${['purchased','shipped','mailed'].map(field=>badge(stageLabel(l,field),l.evidence?.[field]==='conflict'?'bad':l[field]>0?'good':'')).join('')}${badge(p?.rules.length?'已翻譯':'未翻譯',p?.rules.length?'good':'warn')}</div>${links(p)}</div>`;}).join('')}${o.issues?.length?`<p class="notice">${esc(o.issues.join('；'))}</p>`:''}`);
@@ -155,8 +163,16 @@ function orderDetail(id){const o=data.orders.find(o=>o.id===id);if(!o)return;
 function productDetail(name,rulesOnly=false){const p=data.products.find(p=>p.name===name);if(!p)return;
   const cells=[['訂購量',p.ordered],['已確認出貨（金流）',p.shipped],['待出',p.outstanding],['缺貨',p.shortage],['全新庫存',p.stock],['二手庫存',p.usedStock],['二手已出貨（金流）',p.usedShipped]];
   if(p.usedOrdered!=null)cells.push(['二手訂購量',p.usedOrdered],['二手待出',p.usedOutstanding],['二手缺貨',p.usedShortage]);
-  const inventory=`<div class="finance inventory-detail">${cells.map(([label,value])=>`<div><small>${label}</small><strong>${value==null?'待核對':num(value)}</strong></div>`).join('')}</div>${data.unmatchedShipments?.length?`<p class="notice">尚有 ${data.unmatchedShipments.length} 筆未對應出貨未納入計算，請先至庫存查詢核對。</p>`:''}${p.shortage!=null?`<p class="read-only-note">全新缺貨：max(0, ${num(p.ordered)} − ${num(p.shipped)} − ${num(p.stock)}) ＝ ${p.shortage}</p>`:''}${p.stockUpdatedAt?`<p class="read-only-note">最近庫存異動：${esc(p.stockUpdatedAt)}</p>`:''}${p.usedOrdered==null?'<p class="read-only-note">二手訂購量未提供，未推算二手待出與缺貨。</p>':''}${p.coverage==='unknown'?'<p class="notice">部分訂購量、庫存或金流出貨資料待核對，對應的缺貨量未推算。</p>':''}`;
+  const inventory=`<div class="finance inventory-detail">${cells.map(([label,value])=>`<div><small>${label}</small><strong>${value==null?'待核對':['已確認出貨（金流）','二手已出貨（金流）'].includes(label)?`<button class="shipment-value" data-shipment-product="${esc(p.name)}" data-condition="${label.startsWith('二手')?'used':'new'}" title="查看採用的金流明細">${num(value)}</button>`:num(value)}</strong></div>`).join('')}</div>${data.unmatchedShipments?.length?`<p class="notice">尚有 ${data.unmatchedShipments.length} 筆未對應出貨未納入計算，請先至庫存查詢核對。</p>`:''}${p.shortage!=null?`<p class="read-only-note">全新缺貨：max(0, ${num(p.ordered)} − ${num(p.shipped)} − ${num(p.stock)}) ＝ ${p.shortage}</p>`:''}${p.stockUpdatedAt?`<p class="read-only-note">最近庫存異動：${esc(p.stockUpdatedAt)}</p>`:''}${p.usedOrdered==null?'<p class="read-only-note">二手訂購量未提供，未推算二手待出與缺貨。</p>':''}${p.coverage==='unknown'?'<p class="notice">部分訂購量、庫存或金流出貨資料待核對，對應的缺貨量未推算。</p>':''}`;
   openDialog(p.name,`${rulesOnly?'':inventory}${links(p)}<h3>訂購顧客</h3>${p.customers.map(c=>`<div class="field"><button class="order-name" data-order="${esc(c.id)}">${esc(c.name)}${icon('chevron-right')}</button>${badge(c.mailed===1?'規則已寄':c.mailed===0?'規則未寄':'寄送未確認',c.mailed===1?'good':'')}</div>`).join('')||empty('目前沒有對應的訂購資料')}`);
+}
+function shipmentDetail(name,condition='new',snapshot=data){
+  const p=snapshot?.products.find(p=>p.name===name);if(!p)return;
+  const used=condition==='used',ids=used?p.usedShipmentTransactionIds:p.shipmentTransactionIds,expected=used?p.usedShipped:p.shipped;
+  if(!Array.isArray(ids)){openDialog('出貨金流明細',empty('尚未取得出貨明細，請重新讀取雲端'));return;}
+  const wanted=new Set(ids),rows=(snapshot.transactions||[]).filter(t=>wanted.has(t.id)).sort((a,b)=>parseTime(b.time)-parseTime(a.time)||b.sourceRow-a.sourceRow);
+  const quantity=rows.every(t=>Number.isInteger(t.quantity))?rows.reduce((sum,t)=>sum-t.quantity,0):null,consistent=rows.length===wanted.size&&quantity===expected;
+  openDialog(`${p.name} · ${used?'二手':'全新'}出貨金流`,`${consistent?`<p class="info-band">${rows.length} 筆金流 · 淨出貨 ${num(expected)} 盒</p>`:'<p class="notice">出貨量與明細尚未完整核對，請重新讀取資料。</p>'}${rows.length?transactionList(rows):empty('本季沒有納入計算的出貨紀錄')}`,snapshot);
 }
 async function markRead(ids){if(!ids.length)return;if(!demo)await api('/read',{ids});events.forEach(e=>{if(ids.includes(e.id))e.read=true;});render();}
 async function settings(){
@@ -214,6 +230,7 @@ async function settings(){
 }
 async function logout(cleanup=true){
   const oldToken=token,remove=cleanup!==false&&!demo&&!!token;authGeneration++;
+  dialogSnapshot=null;transactionPerson='all';metricNavigationPending=false;
   deviceStorage.remove('d77-session');
   requestEpoch++;busy=false;token='';account='';data=null;events=[];demo=false;seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};clearInterval(timer);$('#detail').close();$('#workspace').hidden=true;$('#nav').hidden=true;$('#login').hidden=false;$('#view').replaceChildren();$('#login-status').textContent='已登出';window.google?.accounts.id.disableAutoSelect();icons();
   if(remove){
@@ -229,10 +246,19 @@ $('#theme').onclick=()=>{document.documentElement.dataset.theme=document.documen
 document.documentElement.dataset.theme=deviceStorage.get('d77-theme')||'light';
 document.addEventListener('click',async e=>{
   const b=e.target.closest('button');if(!b||b.disabled)return;
-  if(b.dataset.go)go(b.dataset.go,b.dataset.filter||'all');
+  if(b.dataset.go){
+    if(b.classList.contains('metric')){
+      if(metricNavigationPending)return;metricNavigationPending=true;const generation=authGeneration,originPage=page;
+      try{if(!matchMedia('(prefers-reduced-motion: reduce)').matches)await b.animate([{transform:'scale(.98)'},{transform:'scale(1)'}],{duration:120,easing:'ease-out'}).finished;}
+      catch{}finally{metricNavigationPending=false;}
+      if(generation!==authGeneration||page!==originPage)return;
+    }
+    go(b.dataset.go,b.dataset.filter||'all');
+  }
   else if(b.dataset.filter){filter=b.dataset.filter;render();}
   else if(b.dataset.order)orderDetail(b.dataset.order);
-  else if(b.dataset.transaction)transactionDetail(b.dataset.transaction);
+  else if(b.dataset.transaction)transactionDetail(b.dataset.transaction,b.dataset.person||'all',b.closest('#detail-body')?dialogSnapshot:data);
+  else if(b.dataset.shipmentProduct)shipmentDetail(b.dataset.shipmentProduct,b.dataset.condition,dialogSnapshot||data);
   else if(b.id==='inventory-reconcile')openDialog('金流出貨品項待核對',(data.unmatchedShipments||[]).map(t=>`<div class="detail-line"><strong>${esc(t.name||'品項空白')}</strong><p>${t.used?'二手':'全新'} · 增減數量 ${num(t.quantity)} · 金流來源列 ${esc(t.sourceRow)}</p><p class="notice">${esc(({ambiguous:'品項名稱對應到多個品項，未納入出貨量',unmatched:'找不到對應本季品項，未納入出貨量'})[t.reason]||t.reason||'找不到唯一對應本季品項，未納入品項出貨量')}</p></div>`).join(''));
   else if(b.dataset.product)productDetail(b.dataset.product);
   else if(b.dataset.rule)productDetail(b.dataset.rule,true);
@@ -240,11 +266,11 @@ document.addEventListener('click',async e=>{
   else if(b.id==='read-all'){try{await markRead(events.filter(e=>!e.read).map(e=>e.id));}catch(err){setError(err.message);}}
 });
 window.addEventListener('hashchange',()=>{page=names[location.hash.slice(1)]?location.hash.slice(1):'overview';render();window.scrollTo(0,0);});
-$('#nav').addEventListener('click',e=>{const link=e.target.closest('a');if(link){filter='all';search='';sort='new';if(link.dataset.page===page)render();}});
+$('#nav').addEventListener('click',e=>{const link=e.target.closest('a');if(link){filter='all';search='';sort='new';transactionPerson='all';if(link.dataset.page===page)render();}});
 installSwipe($('#workspace'),{current:()=>page,enabled:()=>page!=='notifications'&&!!data&&!busy&&!$('#workspace').hidden,navigate:target=>go(target),decorate:icons,preview:target=>{
-  const previous={filter,search,sort};filter='all';search='';sort='new';
+  const previous={filter,search,sort,transactionPerson};filter='all';search='';sort='new';transactionPerson='all';
   try{return ({overview,orders:ordersView,inventory:inventoryView,rules:rulesView,transactions:transactionsView}[target])();}
-  finally{({filter,search,sort}=previous);}
+  finally{({filter,search,sort,transactionPerson}=previous);}
 }});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&token)refresh();});
 async function initializeGoogle(){

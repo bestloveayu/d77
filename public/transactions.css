@@ -2,11 +2,22 @@
 .transaction-filters button{flex:1 0 90px;min-height:42px}
 .transaction-note{white-space:pre-wrap;overflow-wrap:anywhere}
 .transaction-id{overflow-wrap:anywhere;color:var(--muted);font-size:14px}
-.metrics button.metric{border:0;text-align:left;color:var(--ink);justify-content:flex-start;width:100%}
-.metrics button.metric:hover{outline:1px solid var(--green)}
-.metrics .metric-label{display:flex;flex-direction:column;justify-content:center;min-height:36px;line-height:18px}
-.metrics .metric-label>span{white-space:nowrap}
+.metrics button.metric{display:grid;grid-template-rows:22px 42px;align-content:center;gap:8px;border:1px solid var(--line);text-align:left;color:var(--ink);width:100%;min-height:108px;transition:transform 120ms ease-out,border-color 120ms ease-out;padding:14px}
+.metrics button.metric:hover{border-color:var(--green)}
+.metrics button.metric:active{transform:scale(.98)}
+.metrics .metric-label{display:flex;align-items:center;gap:6px;min-height:0;line-height:20px;white-space:nowrap;font-size:12px}
+.metrics .metric-label svg{width:18px;height:18px;flex-shrink:0}
+.metrics .metric-value{display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0}
+.metrics .metric-value strong{font-size:30px;white-space:nowrap}
+.metrics .metric-chevron{display:flex;align-items:center;color:var(--green)}
+.metrics .metric-chevron svg{width:14px;height:14px}
 .stock-row>.num>small{display:block;font-size:10px}
-.metrics .metric[data-go=orders]:not([data-filter=all]) strong{font-size:24px;white-space:nowrap}
 .stock-name .shortage-estimate{color:var(--amber);white-space:normal}
-@media(max-width:620px){.overview-finance .section-heading{align-items:center;gap:8px}.overview-finance h2{font-size:20px}.overview-finance .text-button{white-space:nowrap}.transaction-filters button{flex-basis:26%}.metrics .metric[data-go=orders]:not([data-filter=all]) strong{font-size:20px}}
+.shipment-value{min-width:44px;min-height:40px;padding:0 6px;border-color:var(--line);background:transparent;color:var(--green);font-size:inherit;font-weight:inherit;text-decoration:underline;text-underline-offset:4px}
+.transaction-subtotal{padding:14px 0;margin:12px 0;border-block:1px solid var(--line)}
+.transaction-subtotal h3{font-size:15px;margin-bottom:10px}
+.transaction-subtotal-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.transaction-subtotal-values small{display:block;color:var(--muted);font-size:12px}
+.transaction-subtotal-values strong{display:block;font-size:19px;overflow-wrap:anywhere}
+@media(max-width:620px){.overview-finance .section-heading{align-items:center;gap:8px}.overview-finance h2{font-size:20px}.overview-finance .text-button{white-space:nowrap}.transaction-filters button{flex-basis:26%}.metrics button.metric{padding:10px;gap:7px}.metrics .metric-value strong{font-size:28px}.transaction-subtotal-values{gap:6px}.transaction-subtotal-values strong{font-size:17px}}
+@media(prefers-reduced-motion:reduce){.metrics button.metric{transition:none}.metrics button.metric:active{transform:none}}

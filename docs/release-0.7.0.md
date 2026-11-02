@@ -1,0 +1,9 @@
+# 0.7.0
+
+- Inventory primary quantity column shows outstanding demand instead of original ordered quantity. Original ordered and shipped quantities remain in product details; new/used shortage labels remain beneath item names. Added outstanding-demand descending sort while retaining original-order sort.
+- Overview metrics retain their existing colors with a permanent thin border and right chevron. Labels stay on one line, ratio values have matching font sizes. Press scales to 98% with a 120ms return before navigation; reduced-motion users navigate without the animation. Duplicate clicks and account/page changes cancel delayed navigation.
+- Product new/used shipped amounts open exact contributing ledger transactions, including signed corrections, using backend evidence IDs from the same snapshot. Transaction links remain bound to that snapshot even if background refresh reuses a ledger row ID.
+- Transactions have a read-only filtered subtotal band for income, cost and profit, plus a payer/receiver filter. Mixed-person transactions use the selected person's actual cash columns, not the full-row total. Full-season finance remains separate and unchanged. Unknown cash is not treated as zero; settlement amounts do not become income/cost.
+- Backend fields are additive: ledgerDetailVersion, per-person cash breakdown and per-condition contributing transaction IDs. No underlying inventory/financial calculation changes, no GAS, spreadsheet, database, auth or push-key changes.
+
+Validation: 91 Node/security tests. Synthetic browser tests cover 320/390/1440 layouts, single-line metric titles/equal number fonts, press animation/reduced motion, inventory demand and shortage labels, new/used source drilldown, background-refresh row-ID reuse, payer subtotals, Chinese IME, navigation, login restoration and logout. Workerd push runtime passed. No real customer write or purchase was performed.

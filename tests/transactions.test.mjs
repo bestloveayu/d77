@@ -17,3 +17,12 @@ test('missing transaction IDs remain separate and invalid amounts stay unknown',
   const r=ledger(rows,'2026秋');assert.equal(r.transactions.length,2);
   assert.notEqual(r.transactions[0].id,r.transactions[1].id);assert.equal(r.transactions[0].amount,null);
 });
+test('cashByPerson preserves each payer column with blank zero and invalid null',()=>{
+  const result=ledger([h,
+    ['Game',-1,100,25,5,10,'2026秋','GM/出貨'],
+    ['Game',0,'','bad','bad','','2026秋','其他收入'],
+  ],'2026秋');
+  assert.deepEqual(result.transactions[0].cashByPerson,{east:{income:100,cost:5},yu:{income:25,cost:10}});
+  assert.deepEqual(result.transactions[1].cashByPerson,{east:{income:0,cost:null},yu:{income:null,cost:0}});
+  assert.equal(result.income,125);assert.equal(result.cost,15);assert.equal(result.eastDue,null);
+});
