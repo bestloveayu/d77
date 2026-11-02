@@ -21,7 +21,7 @@ function table(rows, required) {
   const headers = rows[h].map(norm);
   const used = headers.filter(Boolean);
   if (new Set(used).size !== used.length) throw new Error('欄位名稱重複，未採用資料');
-  return rows.slice(h + 1).map((r, i) => ({ row: h + i + 2, get: key => r[headers.indexOf(norm(key))] ?? '' }));
+  return rows.slice(h + 1).map((r, i) => ({ row: h + i + 2, raw: key => r[headers.indexOf(norm(key))], get: key => r[headers.indexOf(norm(key))] ?? '' }));
 }
 export function decodeTeam(rows) {
   const m = /^collaboration-v1:(\d+)$/.exec(String(rows[0]?.[0]));
@@ -39,6 +39,7 @@ export function catalog(rows) {
   return table(rows, ['中文名稱']).filter(r => r.get('中文名稱')).map(r => ({
     name: String(r.get('中文名稱')).trim(), foreignName: String(r.get('外文名稱')).trim(),
     price: n(r.get('代購(台)')), ordered: n(r.get('訂購量')), reserved: n(r.get('預約量')),
+    usedOrdered: (()=>{const q=n(r.get('二手訂購量'));return Number.isInteger(q)&&q>=0?q:null;})(),
     booth: String(r.get('攤位')), ruleUrl: safeUrl(r.get('規則書')), noRulesRequired:exemption(r.get('不需寄送中文規則')), row: r.row
   }));
 }
@@ -119,11 +120,11 @@ function newerStockUpdate(a,b) {
 }
 export function ledger(rows, season) {
   const records = table(rows,['品項','增減數量','東收入','于收入','東支出','于支出','季別']);
-  const stock = new Map(),stockUpdates=new Map(); let income=0,cost=0,eastDue=0; const issues=[],transactions=[];
+  const stock = new Map(),stockUpdates=new Map(),invalidStockQuantities=new Set(); let income=0,cost=0,eastDue=0; const issues=[],transactions=[];
   // Inventory is all-history; finance is the selected season only.
   for (const r of records) {
-    const name=String(r.get('品項')).trim(), raw=r.get('增減數量'), q=raw===''?0:n(raw);
-    if (q===null) issues.push('金流第 '+r.row+' 列數量無法辨識');
+    const name=String(r.get('品項')).trim(), raw=r.raw('增減數量'), q=raw===''?0:n(raw);
+    if (!Number.isInteger(q)) {invalidStockQuantities.add(name);issues.push('金流第 '+r.row+' 列數量無法辨識');}
     if (name && q) stock.set(name,(stock.get(name)||0)+q);
     if(name && q!==null && q!==0){
       const at=String(r.get('時間戳記')||r.get('日期')),update={time:stockTime(at),at,row:r.row};
@@ -132,20 +133,22 @@ export function ledger(rows, season) {
     if (String(r.get('季別')).trim()!==season) continue;
     const values=['東收入','于收入','東支出','于支出'].map(k => r.get(k)===''?0:n(r.get(k)));
     const note=String(r.get('備註')).trim(),parts=note.split(/[/／]/).map(s=>s.trim());
-    if(['GM','GM採購','一般','一般販售'].includes(parts[0]))parts.shift();
+    const salesChannel=['GM','GM採購'].includes(parts[0])?'gm':['一般','一般販售'].includes(parts[0])?'general':'unknown';
+    if(salesChannel!=='unknown')parts.shift();
     const labels={'進貨':'進貨成本','進貨成本':'進貨成本','出貨':'銷貨收入','銷貨收入':'銷貨收入','其他支出':'其他成本','其他成本':'其他成本','其他收入':'其他收入','結算':'結算'};
     const settlementValue=r.get('結餘(東給于)')===''?0:n(r.get('結餘(東給于)'));
     const kind=labels[parts[0]]||(settlementValue?'結算':q<0?'銷貨收入':q>0?'進貨成本':'未分類');
     const cash=values.some(v=>v===null)?null:kind==='結算'?settlementValue:['銷貨收入','其他收入'].includes(kind)?values[0]+values[1]:['進貨成本','其他成本'].includes(kind)?values[2]+values[3]:null;
     const actor=['小東','于正'].filter((_,i)=>values[i]||values[i+2]).join('、');
     transactions.push({id:'row-'+r.row,sourceRow:r.row,transactionId:String(r.get('交易編號')).trim(),time:String(r.get('時間戳記')||r.get('日期')),kind,subject:String(r.get('顧客姓名')||r.get('客戶姓名')||r.get('姓名')||parts[1]||''),name,quantity:q,amount:cash,actor,note,income:values[0]===null||values[1]===null?null:values[0]+values[1],cost:values[2]===null||values[3]===null?null:values[2]+values[3],settlement:settlementValue});
+    transactions.at(-1).salesChannel=salesChannel;
     if (values.some(v=>v===null)) {issues.push('金流第 '+r.row+' 列金額無法辨識');eastDue=null;continue;}
     income+=values[0]+values[1];cost+=values[2]+values[3];
     const settlement=r.get('結餘(東給于)')===''?0:n(r.get('結餘(東給于)'));
     if(settlement===null){issues.push('金流第 '+r.row+' 列結算金額無法辨識');eastDue=null;}
     else if(eastDue!==null)eastDue+=(values[0]+values[3]-values[2]-values[1])/2-settlement;
   }
-  return {stock,stockUpdates,income,cost,eastDue,issues,transactions};
+  return {stock,stockUpdates,invalidStockQuantities,income,cost,eastDue,issues,transactions};
 }
 function orderedJson(value) {
   if (Array.isArray(value)) return '['+value.map(orderedJson).join(',')+']';
@@ -194,26 +197,63 @@ export async function compose(input, config, now = new Date().toISOString()) {
     // No record is unknown, not a claim that an offline historical order never shipped.
   }
   const money=ledger(input.ledger,config.season), files=input.rules||[];
+  const identify=name=>{
+    const usedSuffix=/[（(]二手[）)]\s*$/;
+    const used=usedSuffix.test(name),base=name.replace(usedSuffix,'').trim();
+    const match=resolve(base),aliased=config.aliases?.[base]??base;
+    const candidates=match?[match]:items.filter(i=>[i.name,i.foreignName].filter(Boolean).some(k=>norm(k)===norm(aliased)));
+    return {used,match,candidates};
+  };
+  const inventory=new Map(items.map(item=>[item,{new:0,used:0,newInvalid:false,usedInvalid:false,update:null}]));
+  const rawNames=new Set([...money.stock.keys(),...money.stockUpdates.keys(),...money.invalidStockQuantities]);
+  for(const name of rawNames){
+    const {used,match,candidates}=identify(name),key=used?'used':'new';
+    for(const item of candidates){
+      const inv=inventory.get(item);
+      if(!match||money.invalidStockQuantities.has(name))inv[key+'Invalid']=true;
+      if(!match)continue;
+      inv[key]+=money.stock.get(name)||0;
+      const update=money.stockUpdates.get(name);
+      if(update&&newerStockUpdate(update,inv.update))inv.update=update;
+    }
+  }
+  const unmatchedShipments=[];
+  const demand=new Map(items.map(item=>[item,{new:0,used:0,newInvalid:false,usedInvalid:false}]));
+  for(const tx of money.transactions){
+    if(tx.kind!=='銷貨收入'||tx.salesChannel==='general'||tx.quantity===0)continue;
+    const {used,match,candidates}=identify(tx.name);
+    if(!match){
+      money.issues.push('金流第 '+tx.sourceRow+' 列出貨品項無法唯一比對');
+      unmatchedShipments.push({sourceRow:tx.sourceRow,name:tx.name,quantity:tx.quantity,used,reason:candidates.length?'ambiguous':'unmatched'});
+    }
+    if(tx.salesChannel==='unknown')money.issues.push('金流第 '+tx.sourceRow+' 列沿用未標示通路的出貨');
+    for(const item of candidates){
+      const d=demand.get(item),key=used?'used':'new';
+      if(!match||!Number.isInteger(tx.quantity))d[key+'Invalid']=true;
+      else d[key]-=tx.quantity;
+    }
+  }
   const products=items.map(item=>{
     const rows=orders.flatMap(o=>o.lines.filter(l=>l.name===item.name).map(l=>({order:o,line:l})));
     const responseOrdered=rows.every(x=>x.line.quantity!==null)?rows.reduce((a,x)=>a+x.line.quantity,0):null;
     const ordered=item.ordered===null?responseOrdered:Number.isInteger(item.ordered)&&item.ordered>=0?item.ordered:null;
     const orderQuantityMismatch=ordered!==null&&(responseOrdered===null||ordered!==responseOrdered);
-    const known=!orderQuantityMismatch&&ordered!==null&&rows.every(x=>x.line.quantity!==null&&x.line.shipped!==null);
-    const shipped=known?rows.reduce((a,x)=>a+x.line.shipped,0):null;
-    const newStock=money.stock.get(item.name)||0;
-    const matchesUsed=key=>/二手/.test(key)&&norm(key.replace(/(?:\(|（)?二手(?:\)|）)?/g,''))===norm(item.name);
-    const usedStock=[...money.stock].filter(([key])=>matchesUsed(key)).reduce((a,[,v])=>a+v,0);
-    let stockUpdate=null;
-    for(const [key,update] of money.stockUpdates)if((key===item.name||matchesUsed(key))&&newerStockUpdate(update,stockUpdate))stockUpdate=update;
+    const d=demand.get(item);
+    const validShipment=!d.newInvalid&&d.new>=0&&(ordered===null||d.new<=ordered);
+    const shipped=validShipment?d.new:null;
+    const usedShipped=!d.usedInvalid&&d.used>=0&&(item.usedOrdered===null||d.used<=item.usedOrdered)?d.used:null;
+    const known=ordered!==null&&shipped!==null;
+    if(!validShipment||usedShipped===null)money.issues.push(item.name+' 帳本出貨數量待核對');
+    const inv=inventory.get(item),newStock=inv.newInvalid?null:inv.new,usedStock=inv.usedInvalid?null:inv.used,stockUpdate=inv.update;
     const rules=files.filter(f=>norm(f.name.replace(/_(?:中文規則書?|中文卡牌|卡表).*$/,''))===norm(item.name)).map(f=>({name:f.name,url:safeUrl(f.webViewLink||`https://drive.google.com/file/d/${encodeURIComponent(f.id)}/view`),cards:/中文卡牌|卡表/.test(f.name)}));
     if(item.ruleUrl&&!rules.some(f=>f.url===item.ruleUrl))rules.push({name:'規則檔',url:item.ruleUrl,cards:false});
     const outstanding=known?Math.max(0,ordered-shipped):null;
-    // Unknown shipment remains unknown: this fallback is a conservative planning deficit only.
-    const shortageEstimate=!known&&ordered!==null;
-    return {...item,ordered,responseOrdered,orderQuantityMismatch,orderQuantitySource:item.ordered===null?'responses':'catalog',shipped,outstanding,stock:newStock,usedStock,shortage:known?Math.max(0,outstanding-newStock):shortageEstimate?Math.max(0,ordered-newStock):null,shortageEstimate,
+    const usedOutstanding=item.usedOrdered!==null&&usedShipped!==null?Math.max(0,item.usedOrdered-usedShipped):null;
+    const usedShortage=usedOutstanding!==null&&usedStock!==null?Math.max(0,usedOutstanding-usedStock):null;
+    const shortageEstimate=false;
+    return {...item,ordered,responseOrdered,orderQuantityMismatch,orderQuantitySource:item.ordered===null?'responses':'catalog',shipped,outstanding,shipmentSource:'ledger',usedShipped,usedOutstanding,usedShortage,stock:newStock,usedStock,shortage:known&&newStock!==null?Math.max(0,outstanding-newStock):null,shortageEstimate,
       stockUpdatedAt:stockUpdate?.at||'',stockUpdatedTime:stockUpdate?.time??null,stockUpdatedRow:stockUpdate?.row??null,rules,
-      customers:rows.map(x=>({id:x.order.id,name:x.order.name,mailed:x.line.mailed})),coverage:known?'confirmed':'unknown'};
+      customers:rows.map(x=>({id:x.order.id,name:x.order.name,mailed:x.line.mailed})),coverage:known&&!inv.newInvalid&&!inv.usedInvalid&&(item.usedOrdered===null||usedShortage!==null)?'confirmed':'unknown'};
   });
   for(const order of orders){order.total=order.lines.every(l=>l.quantity!==null&&l.price!==null)?order.lines.reduce((a,l)=>a+l.quantity*l.price,0):null;
     const knownSum=field=>order.lines.reduce((sum,l)=>sum+(l[field]??0),0);
@@ -225,11 +265,11 @@ export async function compose(input, config, now = new Date().toISOString()) {
     // Do not expose contact details to the mobile app.
     delete order.email;order.phoneSuffix=order.phone?.slice(-3)||'';delete order.phone;
   }
-  return {season:config.season,updatedAt:now,followUpVersion:1,inventoryVersion:2,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
+  return {season:config.season,updatedAt:now,followUpVersion:1,inventoryVersion:3,stockCalculationVersion:1,unmatchedShipments,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
     transactions:money.transactions,issues:money.issues,operations:team.operations.filter(o=>o.season===config.season).map(o=>({id:o.id,actor:o.actor,kind:o.kind,status:o.status,time:o.updatedAt||o.createdAt})),
     sourceStatus:{catalog:'ok',responses:'ok',ledger:'ok',team:'ok',documents:'ok',rules:'ok'},
-    summary:{orders:orders.length,attention:orders.filter(needsAttention).length,registrationPending:orders.filter(o=>o.followUp.kind==='registration').length,rulesPending:orders.filter(o=>o.followUp.kind==='rules').length,shortages:products.filter(p=>p.shortage>0).length,unknownStock:products.filter(p=>p.coverage==='unknown').length,
-      rulesReady:products.filter(p=>p.rules.length).length,rulesTotal:products.length}};
+    summary:{orders:orders.length,attention:orders.filter(needsAttention).length,registrationPending:orders.filter(o=>o.followUp.kind==='registration').length,rulesPending:orders.filter(o=>o.followUp.kind==='rules').length,shortages:products.filter(p=>p.shortage>0||p.usedShortage>0).length,unknownStock:products.filter(p=>p.coverage==='unknown').length,
+      unmatchedShipments:unmatchedShipments.length,rulesReady:products.filter(p=>p.rules.length).length,rulesTotal:products.length}};
 }
 export async function changes(previous, next) {
   if(!previous)return []; // First successful read establishes the baseline; no historical flood.
@@ -246,7 +286,7 @@ export async function changes(previous, next) {
   }
   const oldProducts=new Map(previous.products.map(p=>[p.name,p]));
   for(const p of next.products){const old=oldProducts.get(p.name);if(!old)continue;
-    if(p.shortage>0&&(p.shortage!==old.shortage||!!p.shortageEstimate!==!!old.shortageEstimate)&&(!p.shortageEstimate||previous.inventoryVersion===2))
+    if(previous.inventoryVersion===3&&previous.stockCalculationVersion===1&&p.shortage>0&&(p.shortage!==old.shortage||!!p.shortageEstimate!==!!old.shortageEstimate))
       await add('shortage',[p.name,p.shortage,!!p.shortageEstimate,next.updatedAt],p.shortageEstimate?'庫存缺口估算提醒':'庫存不足提醒',p.shortageEstimate?p.name+' 規劃缺口估算 '+p.shortage+' 盒（非確認剩餘需求，出貨資料待核對）':p.name+' 尚缺 '+p.shortage+' 盒',{page:'inventory',name:p.name});
     if(!old.rules.length&&p.rules.length)await add('rules',p.name+await digest(p.rules),'中文規則已備齊',p.name,{page:'rules',name:p.name});
   }

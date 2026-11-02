@@ -1,0 +1,10 @@
+# 0.6.1
+
+- Inventory shipment demand now uses only selected-season ledger sales quantities, not collaboration totals. Signed positive corrections reverse previous shipped quantities; zero-quantity cash rows do not change shipped counts. Explicit general-sale entries affect shared stock but not GM preorder fulfillment.
+- Canonical names and approved aliases are applied consistently to all-history stock and selected-season shipments. Used condition is the existing local-system parenthesized suffix, not arbitrary occurrences of the word 二手 in a game name.
+- Pending demand = ordered minus ledger shipped. Shortage = pending minus available stock, floored at zero. Ten ordered, two shipped and eight remaining stock yields zero shortage. New and used buckets are independent. Optional 二手訂購量 allows used demand calculation; absent used demand remains unknown.
+- Invalid/fractional stock quantities, ambiguous or excessive shipment totals remain review. Unmatched shipment names are visibly listed for reconciliation and are not silently counted as matched shipments. No spreadsheet edits or GAS changes.
+- Overview View All links have identical font sizes. Combined pending metric shows shipment-registration/purchase-pending counts, yellow when registration count is nonzero, otherwise green. Pending purchase is confirmed uncompleted purchase, excluding rules-only follow-up and unknown/conflicting evidence; it does not reuse the old broad attention predicate. The metric opens registration if nonzero, otherwise purchase pending.
+- New button animations are not implemented. Proposed visual treatment remains a design suggestion, not a shipped change.
+
+Validation: 86 Node/security tests, synthetic browser coverage of finance links, font sizes, combined counts and colors, name-reconciliation display, mobile layouts at 320/390/1440, IME, session restoration, push settings, and overview regression. Physical-phone notification delivery was not retested for this release; subscriptions and credentials are unchanged.

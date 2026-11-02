@@ -4,5 +4,9 @@
 .transaction-id{overflow-wrap:anywhere;color:var(--muted);font-size:14px}
 .metrics button.metric{border:0;text-align:left;color:var(--ink);justify-content:flex-start;width:100%}
 .metrics button.metric:hover{outline:1px solid var(--green)}
+.metrics .metric-label{display:flex;flex-direction:column;justify-content:center;min-height:36px;line-height:18px}
+.metrics .metric-label>span{white-space:nowrap}
+.stock-row>.num>small{display:block;font-size:10px}
+.metrics .metric[data-go=orders]:not([data-filter=all]) strong{font-size:24px;white-space:nowrap}
 .stock-name .shortage-estimate{color:var(--amber);white-space:normal}
-@media(max-width:620px){.overview-finance .section-heading{align-items:center;gap:8px}.overview-finance h2{font-size:20px}.overview-finance .text-button{white-space:nowrap;font-size:14px}.transaction-filters button{flex-basis:26%}}
+@media(max-width:620px){.overview-finance .section-heading{align-items:center;gap:8px}.overview-finance h2{font-size:20px}.overview-finance .text-button{white-space:nowrap}.transaction-filters button{flex-basis:26%}.metrics .metric[data-go=orders]:not([data-filter=all]) strong{font-size:20px}}
