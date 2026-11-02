@@ -10,7 +10,7 @@ const assert=require('node:assert/strict');const {spawn}=require('node:child_pro
  assert((await page.locator('[data-go=orders][data-filter=rules]').innerText()).includes('1'));
  await page.locator('.alert-row[data-go=orders][data-filter=registration]').click();assert.equal(await page.locator('.order').count(),1);assert((await page.locator('.order').innerText()).includes('示範顧客甲'));
  await page.locator('[data-filter=rules]').click();assert.equal(await page.locator('.order').count(),1);assert((await page.locator('.order').innerText()).includes('示範顧客乙'));
- await page.locator('[data-filter=pending]').click();assert.equal(await page.locator('.order').count(),0,'pending purchase must not include shipped rules-only orders or unknown purchase evidence');
+ await page.locator('[data-filter=pending]').click();assert.equal(await page.locator('.order').count(),1,'pending purchase includes zero confirmed purchase total, not rules-only shipped orders');
  await page.locator('[data-filter=review]').click();assert.equal(await page.locator('.order').count(),1);assert((await page.locator('.order').innerText()).includes('示範顧客丙'));
  for(const width of [320,390,1440]){await page.setViewportSize({width,height:900});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:`test-results/followup-orders-${width}.png`,fullPage:true});}
  await page.locator('#settings').click();assert.equal(await page.locator('input[name=types][value=registration]').count(),1);assert.equal(await page.locator('input[name=types][value=rules-pending]').count(),1);assert.deepEqual(errors,[]);
