@@ -1,0 +1,10 @@
+# 0.6.0
+
+- Fifth bottom tab is Finance (收支), containing seasonal income, costs, profit, account balance and the existing transaction search/list/details. Overview retains finance with a View All link. Remove the settlement-specific detail field; settlement transactions retain their amount under a generic transaction amount.
+- Notification history remains accessible as Latest Activity from overview. Existing push subscription/preferences remain unchanged; notification clicks now open overview. Finance participates in circular swipe navigation.
+- Overview metrics link to all orders, pending shipment registration, inventory shortages and completed rules. Pending shipment count uses the same confirmed registration classification as its destination filter, excluding unknown evidence rather than counting it as pending shipment.
+- Inventory defaults to the newest valid nonzero stock quantity change across all seasons, including used stock. Cash-only zero quantity rows do not alter stock update time. Shared Taiwan timestamp parsing fixes AM/PM ordering.
+- Unknown shipment stays unknown. Where a valid ordered quantity exists, ordered minus new stock provides a conservative planning deficit labeled 缺貨估算 in overview, inventory and detail. Complete shipment evidence retains the precise ordered minus shipped minus new stock formula. First migration of estimates is quiet for notifications.
+- Thirty-day login does not enable push. Push additionally requires device permission/subscription, enabled preferences and event type, allowed account, and no active quiet period. Default-season cloud checks run every five minutes. No source writes, GAS changes or push-key rotation.
+
+Validation: 69 unit/security tests; synthetic browser tests for finance/navigation/metrics/stock sorting, 320/390/1440 layouts, swipe wrap, IME, session restoration and push settings. Workerd push runtime test passed. Existing live North Sea UI was inspected before the change and showed 18 ordered, 14 new stock and unknown shipment.

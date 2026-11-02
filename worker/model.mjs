@@ -1,4 +1,5 @@
 import {classifyFollowUp,needsAttention} from '../public/order-followup.js';
+import {parseTimestamp as stockTime} from '../public/timestamp.js';
 export const norm = v => String(v ?? '').normalize('NFKC').replace(/\s+/g, '').toLowerCase();
 function exemption(value){
   const text=norm(value);if(['true','1','是','不需寄送','不需寄送中文規則'].includes(text))return true;
@@ -111,14 +112,23 @@ export async function parseResponses(rows, config, items) {
   }
   return result;
 }
+function newerStockUpdate(a,b) {
+  if(!b)return true;
+  if(a.time===null||b.time===null)return a.time===b.time?a.row>b.row:a.time!==null;
+  return a.time>b.time||a.time===b.time&&a.row>b.row;
+}
 export function ledger(rows, season) {
   const records = table(rows,['品項','增減數量','東收入','于收入','東支出','于支出','季別']);
-  const stock = new Map(); let income=0,cost=0,eastDue=0; const issues=[],transactions=[];
+  const stock = new Map(),stockUpdates=new Map(); let income=0,cost=0,eastDue=0; const issues=[],transactions=[];
   // Inventory is all-history; finance is the selected season only.
   for (const r of records) {
     const name=String(r.get('品項')).trim(), raw=r.get('增減數量'), q=raw===''?0:n(raw);
     if (q===null) issues.push('金流第 '+r.row+' 列數量無法辨識');
     if (name && q) stock.set(name,(stock.get(name)||0)+q);
+    if(name && q!==null && q!==0){
+      const at=String(r.get('時間戳記')||r.get('日期')),update={time:stockTime(at),at,row:r.row};
+      if(newerStockUpdate(update,stockUpdates.get(name)))stockUpdates.set(name,update);
+    }
     if (String(r.get('季別')).trim()!==season) continue;
     const values=['東收入','于收入','東支出','于支出'].map(k => r.get(k)===''?0:n(r.get(k)));
     const note=String(r.get('備註')).trim(),parts=note.split(/[/／]/).map(s=>s.trim());
@@ -135,7 +145,7 @@ export function ledger(rows, season) {
     if(settlement===null){issues.push('金流第 '+r.row+' 列結算金額無法辨識');eastDue=null;}
     else if(eastDue!==null)eastDue+=(values[0]+values[3]-values[2]-values[1])/2-settlement;
   }
-  return {stock,income,cost,eastDue,issues,transactions};
+  return {stock,stockUpdates,income,cost,eastDue,issues,transactions};
 }
 function orderedJson(value) {
   if (Array.isArray(value)) return '['+value.map(orderedJson).join(',')+']';
@@ -192,11 +202,17 @@ export async function compose(input, config, now = new Date().toISOString()) {
     const known=!orderQuantityMismatch&&ordered!==null&&rows.every(x=>x.line.quantity!==null&&x.line.shipped!==null);
     const shipped=known?rows.reduce((a,x)=>a+x.line.shipped,0):null;
     const newStock=money.stock.get(item.name)||0;
-    const usedStock=[...money.stock].filter(([key])=>/二手/.test(key)&&norm(key.replace(/(?:\(|（)?二手(?:\)|）)?/g,''))===norm(item.name)).reduce((a,[,v])=>a+v,0);
+    const matchesUsed=key=>/二手/.test(key)&&norm(key.replace(/(?:\(|（)?二手(?:\)|）)?/g,''))===norm(item.name);
+    const usedStock=[...money.stock].filter(([key])=>matchesUsed(key)).reduce((a,[,v])=>a+v,0);
+    let stockUpdate=null;
+    for(const [key,update] of money.stockUpdates)if((key===item.name||matchesUsed(key))&&newerStockUpdate(update,stockUpdate))stockUpdate=update;
     const rules=files.filter(f=>norm(f.name.replace(/_(?:中文規則書?|中文卡牌|卡表).*$/,''))===norm(item.name)).map(f=>({name:f.name,url:safeUrl(f.webViewLink||`https://drive.google.com/file/d/${encodeURIComponent(f.id)}/view`),cards:/中文卡牌|卡表/.test(f.name)}));
     if(item.ruleUrl&&!rules.some(f=>f.url===item.ruleUrl))rules.push({name:'規則檔',url:item.ruleUrl,cards:false});
     const outstanding=known?Math.max(0,ordered-shipped):null;
-    return {...item,ordered,responseOrdered,orderQuantityMismatch,orderQuantitySource:item.ordered===null?'responses':'catalog',shipped,outstanding,stock:newStock,usedStock,shortage:known?Math.max(0,outstanding-newStock):null,rules,
+    // Unknown shipment remains unknown: this fallback is a conservative planning deficit only.
+    const shortageEstimate=!known&&ordered!==null;
+    return {...item,ordered,responseOrdered,orderQuantityMismatch,orderQuantitySource:item.ordered===null?'responses':'catalog',shipped,outstanding,stock:newStock,usedStock,shortage:known?Math.max(0,outstanding-newStock):shortageEstimate?Math.max(0,ordered-newStock):null,shortageEstimate,
+      stockUpdatedAt:stockUpdate?.at||'',stockUpdatedTime:stockUpdate?.time??null,stockUpdatedRow:stockUpdate?.row??null,rules,
       customers:rows.map(x=>({id:x.order.id,name:x.order.name,mailed:x.line.mailed})),coverage:known?'confirmed':'unknown'};
   });
   for(const order of orders){order.total=order.lines.every(l=>l.quantity!==null&&l.price!==null)?order.lines.reduce((a,l)=>a+l.quantity*l.price,0):null;
@@ -209,7 +225,7 @@ export async function compose(input, config, now = new Date().toISOString()) {
     // Do not expose contact details to the mobile app.
     delete order.email;order.phoneSuffix=order.phone?.slice(-3)||'';delete order.phone;
   }
-  return {season:config.season,updatedAt:now,followUpVersion:1,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
+  return {season:config.season,updatedAt:now,followUpVersion:1,inventoryVersion:2,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
     transactions:money.transactions,issues:money.issues,operations:team.operations.filter(o=>o.season===config.season).map(o=>({id:o.id,actor:o.actor,kind:o.kind,status:o.status,time:o.updatedAt||o.createdAt})),
     sourceStatus:{catalog:'ok',responses:'ok',ledger:'ok',team:'ok',documents:'ok',rules:'ok'},
     summary:{orders:orders.length,attention:orders.filter(needsAttention).length,registrationPending:orders.filter(o=>o.followUp.kind==='registration').length,rulesPending:orders.filter(o=>o.followUp.kind==='rules').length,shortages:products.filter(p=>p.shortage>0).length,unknownStock:products.filter(p=>p.coverage==='unknown').length,
@@ -230,7 +246,8 @@ export async function changes(previous, next) {
   }
   const oldProducts=new Map(previous.products.map(p=>[p.name,p]));
   for(const p of next.products){const old=oldProducts.get(p.name);if(!old)continue;
-    if(p.shortage>0&&p.shortage!==old.shortage)await add('shortage',[p.name,p.shortage,next.updatedAt],'庫存不足提醒',p.name+' 尚缺 '+p.shortage+' 盒',{page:'inventory',name:p.name});
+    if(p.shortage>0&&(p.shortage!==old.shortage||!!p.shortageEstimate!==!!old.shortageEstimate)&&(!p.shortageEstimate||previous.inventoryVersion===2))
+      await add('shortage',[p.name,p.shortage,!!p.shortageEstimate,next.updatedAt],p.shortageEstimate?'庫存缺口估算提醒':'庫存不足提醒',p.shortageEstimate?p.name+' 規劃缺口估算 '+p.shortage+' 盒（非確認剩餘需求，出貨資料待核對）':p.name+' 尚缺 '+p.shortage+' 盒',{page:'inventory',name:p.name});
     if(!old.rules.length&&p.rules.length)await add('rules',p.name+await digest(p.rules),'中文規則已備齊',p.name,{page:'rules',name:p.name});
   }
   const oldOps=new Map(previous.operations.map(o=>[o.id,o]));

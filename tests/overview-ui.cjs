@@ -37,13 +37,13 @@ const {spawn}=require('node:child_process');
   async function swipe(selector,dx,dy=0){await page.locator(selector).evaluate((el,{dx,dy})=>{for(const [type,x,y] of [['touchstart',200,250],['touchend',200+dx,250+dy]]){const e=new Event(type,{bubbles:true});Object.defineProperty(e,'touches',{value:type==='touchstart'?[{clientX:x,clientY:y}]:[]});Object.defineProperty(e,'changedTouches',{value:[{clientX:x,clientY:y}]});el.dispatchEvent(e);}},{dx,dy});}
   await swipe('#page-title',-100);assert(page.url().endsWith('#orders'),'dialog blocks swipe');
   await page.locator('#detail-close').click();
-  await page.locator('#nav [data-page=notifications]').click();
+  await page.locator('#nav [data-page=transactions]').click();
   await swipe('#page-title',-100);await page.waitForURL('**/#overview');
   await page.locator('#view').evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished));});
   await page.waitForTimeout(250);
-  await swipe('#page-title',100);await page.waitForURL('**/#notifications');
+  await swipe('#page-title',100);await page.waitForURL('**/#transactions');
   await page.waitForTimeout(350);
-  await swipe('#page-title',-100,200);assert(page.url().endsWith('#notifications'),'vertical scrolling must not navigate');
+  await swipe('#page-title',-100,200);assert(page.url().endsWith('#transactions'),'vertical scrolling must not navigate');
   await page.locator('#nav [data-page=inventory]').click();
   assert((await page.locator('.stock-head').innerText()).includes('訂購量'));
   assert(!(await page.locator('.stock-head').innerText()).includes('已確認出貨'));
@@ -59,4 +59,3 @@ const {spawn}=require('node:child_process');
   assert((await page.locator('#detail').innerText()).includes('待出'));
   assert.deepEqual(errors,[]);console.log('PASS finance alignment and order progress at 320/390/1440 without overflow. Synthetic data only.');
 }finally{await browser.close();server.kill();}})().catch(e=>{console.error(e);process.exitCode=1;});
-

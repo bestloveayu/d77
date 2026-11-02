@@ -2,4 +2,7 @@
 .transaction-filters button{flex:1 0 90px;min-height:42px}
 .transaction-note{white-space:pre-wrap;overflow-wrap:anywhere}
 .transaction-id{overflow-wrap:anywhere;color:var(--muted);font-size:14px}
+.metrics button.metric{border:0;text-align:left;color:var(--ink);justify-content:flex-start;width:100%}
+.metrics button.metric:hover{outline:1px solid var(--green)}
+.stock-name .shortage-estimate{color:var(--amber);white-space:normal}
 @media(max-width:620px){.overview-finance .section-heading{align-items:center;gap:8px}.overview-finance h2{font-size:20px}.overview-finance .text-button{white-space:nowrap;font-size:14px}.transaction-filters button{flex-basis:26%}}

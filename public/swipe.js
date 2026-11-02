@@ -1,4 +1,4 @@
-const pages=['overview','orders','inventory','rules','notifications'];
+const pages=['overview','orders','inventory','rules','transactions'];
 export function swipePage(current,dx,dy,duration){
   const index=pages.indexOf(current);
   if(index<0||Math.abs(dx)<75||Math.abs(dx)<Math.abs(dy)*1.7||duration>900)return null;
@@ -99,4 +99,3 @@ export function installSwipe(root,{current,enabled,navigate,preview,decorate=()=
   window.addEventListener('hashchange',()=>{if(!committing)cleanup();});
   document.addEventListener('visibilitychange',()=>{if(document.hidden)cleanup();});
 }
-

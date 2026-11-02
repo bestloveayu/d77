@@ -1,0 +1,26 @@
+const {chromium}=require('C:/Users/bestl/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const assert=require('node:assert/strict'),{spawn}=require('node:child_process');
+(async()=>{const server=spawn(process.execPath,['scripts/preview.mjs'],{env:{...process.env,PORT:'8794'},windowsHide:true});await new Promise((r,j)=>{server.stdout.once('data',r);server.once('error',j)});const browser=await chromium.launch({channel:'msedge',headless:true});try{
+ const page=await browser.newPage({viewport:{width:390,height:900}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.addInitScript(()=>window.google={accounts:{id:{initialize(o){window.fixtureLogin=o.callback},renderButton(){},disableAutoSelect(){}}}});
+ await page.route('https://accounts.google.com/**',r=>r.abort());
+ const products=[{name:'北海',ordered:18,stock:14,usedStock:0,shortage:4,shortageEstimate:true,coverage:'unknown',shipped:null,outstanding:null,stockUpdatedTime:1000,stockUpdatedRow:2,rules:[],customers:[]},{name:'新進品項',ordered:1,stock:1,usedStock:0,shortage:0,coverage:'confirmed',shipped:0,outstanding:1,stockUpdatedTime:2000,stockUpdatedRow:3,rules:[{name:'規則',url:'https://example.com/rule'}],customers:[]}];
+ const makeOrder=(id,purchased,shipped)=>({id,name:'測試顧客'+id,status:shipped===1?'已出貨':'待出貨',total:100,time:'2026/11/1',issues:[],lines:[{name:'北海',quantity:1,price:100,purchased,shipped,mailed:0,noRulesRequired:true,evidence:{purchased:purchased===null?'missing':'confirmed',shipped:shipped===null?'missing':'confirmed',mailed:'confirmed'}}]});
+ await page.route('https://*.workers.dev/**',async r=>{const p=new URL(r.request().url()).pathname;let value={};if(p==='/seasons')value={defaultSeason:'2026秋',seasons:[{season:'2026秋'}]};if(p==='/snapshot')value={viewer:'fixture@example.test',snapshot:{season:'2026秋',updatedAt:new Date().toISOString(),products,orders:[makeOrder('1',1,0),makeOrder('2',1,1),makeOrder('3',null,null)],finance:{income:100,cost:40,profit:60,eastDue:-20},summary:{orders:3,shortages:1,rulesReady:1,rulesTotal:2,unknownStock:1},transactions:[{id:'row-1',sourceRow:1,kind:'銷貨收入',subject:'客人',name:'北海',time:'2026/11/1',amount:100,income:100,cost:0,settlement:0}]}};if(p==='/notifications')value={events:[]};await r.fulfill({json:value})});
+ await page.goto('http://127.0.0.1:8794/');await page.waitForFunction(()=>window.fixtureLogin);await page.evaluate(()=>window.fixtureLogin({credential:'fixture'}));await page.locator('.metrics').waitFor();
+ assert.deepEqual(await page.locator('#nav a').allTextContents(),['總覽','訂單','庫存','規則','收支']);
+ assert.equal(await page.locator('.metrics button').count(),4);assert((await page.locator('.metrics').innerText()).includes('待出貨'));assert(!(await page.locator('.metrics').innerText()).includes('待處理'));
+ assert.equal(await page.locator('.metrics [data-filter=registration] strong').innerText(),'1');
+ assert((await page.locator('#view .stock-row').innerText()).includes('缺貨估算'));
+ await page.locator('.metrics [data-filter=registration]').click();assert.equal(await page.locator('.order').count(),1);
+ await page.locator('#nav [data-page=overview]').click();await page.locator('.metrics [data-filter=all]').click();assert.equal(await page.locator('.order').count(),3);
+ await page.locator('#nav [data-page=overview]').click();await page.locator('.metrics [data-filter=shortage]').click();assert((await page.locator('.inventory-stock').innerText()).includes('北海'));
+ await page.locator('[data-product="北海"]').first().click();assert((await page.locator('#detail-body').innerText()).includes('估算'));await page.locator('#detail-close').click();
+ await page.locator('#nav [data-page=inventory]').click();assert.equal(await page.locator('#sort').inputValue(),'new');assert.equal(await page.locator('.stock-name').first().innerText(),'新進品項');
+ await page.locator('#nav [data-page=overview]').click();await page.locator('.metrics [data-filter=ready]').click();assert.equal(await page.locator('.rule-row').count(),1);
+ await page.locator('#nav [data-page=overview]').click();assert.equal(await page.locator('.overview-finance [data-go=transactions]').innerText(),'查看全部');await page.locator('.overview-finance [data-go=transactions]').click();
+ assert.equal(await page.locator('#page-title').innerText(),'收支');assert((await page.locator('#view .finance').innerText()).includes('$100'));assert((await page.locator('#view .finance').innerText()).includes('于應給東'));
+ for(const width of [320,390,1440]){await page.setViewportSize({width,height:900});const a=await page.locator('#view .finance').boundingBox(),b=await page.locator('.filters').boundingBox();assert(a.y+a.height<=b.y);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:`test-results/finance-tab-${width}.png`,fullPage:true})}
+ await page.locator('[data-transaction]').click();assert(!(await page.locator('#detail-body').innerText()).includes('結算（東給于）'));await page.locator('#detail-close').click();
+ assert.deepEqual(errors,[]);console.log('PASS finance tab, overview links, shipment count, shortage estimate, inventory recent ordering and 320/390/1440 layout; synthetic data');
+}finally{await browser.close();server.kill()}})().catch(e=>{console.error(e);process.exitCode=1});

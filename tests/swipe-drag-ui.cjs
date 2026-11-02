@@ -22,8 +22,7 @@ const assert=require('node:assert/strict');const {spawn}=require('node:child_pro
  await touch('touchstart',270);await touch('touchmove',150);await touch('touchend',150);await page.setViewportSize({width:400,height:844});await page.locator('.swipe-stage').waitFor({state:'detached'});
  assert.equal(await page.locator('#view').evaluate(el=>el.getAnimations().length),0,'interrupted transitions must not keep a stale transform');
  await page.setViewportSize({width:390,height:844});
- await page.locator('#nav [data-page=notifications]').click();await touch('touchstart',270);await touch('touchmove',150);await touch('touchend',150);await page.waitForURL('**/#overview');await page.locator('.swipe-stage').waitFor({state:'detached'});
- await page.emulateMedia({reducedMotion:'reduce'});await touch('touchstart',120);await touch('touchmove',250);assert.equal(await page.locator('.swipe-stage').count(),0);await touch('touchend',250);await page.waitForURL('**/#notifications');
+ await page.locator('#nav [data-page=transactions]').click();await touch('touchstart',270);await touch('touchmove',150);await touch('touchend',150);await page.waitForURL('**/#overview');await page.locator('.swipe-stage').waitFor({state:'detached'});
+ await page.emulateMedia({reducedMotion:'reduce'});await touch('touchstart',120);await touch('touchmove',250);assert.equal(await page.locator('.swipe-stage').count(),0);await touch('touchend',250);await page.waitForURL('**/#transactions');
  assert.deepEqual(errors,[]);console.log('PASS finger-tracking preview, commit, snap-back, cancel, vertical scroll, circular wrap and reduced motion');
 }finally{await browser.close();server.kill();}})().catch(e=>{console.error(e);process.exitCode=1;});
-

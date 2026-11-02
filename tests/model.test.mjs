@@ -5,7 +5,7 @@ test('catalog ordered quantity is authoritative and unmatched demand cannot look
   source.responses[0][5]='【十三鬼狩】2人，890元 [請勾選數量]';
   const p=(await compose(source,config)).products[0];
   assert.equal(p.ordered,6);assert.equal(p.responseOrdered,0);
-  assert.equal(p.orderQuantityMismatch,true);assert.equal(p.shipped,null);assert.equal(p.outstanding,null);assert.equal(p.shortage,null);
+  assert.equal(p.orderQuantityMismatch,true);assert.equal(p.shipped,null);assert.equal(p.outstanding,null);assert.equal(p.shortage,6);assert.equal(p.shortageEstimate,true);
 });
 test('manual wish quantities in catalog survive a zero form count',async()=>{
   const source=input();source.responses=[source.responses[0]];source.catalog[1][3]=1;
@@ -66,7 +66,7 @@ const input=()=>({catalog:[['中文名稱','外文名稱','代購(台)','訂購�
 test('unknown shipment is not zero; contacts not exposed; canonical name only via explicit alias',async()=>{
   const result=await compose(input(),config);
   assert.equal(result.orders[0].name,'測試本名');assert.equal(result.orders[0].email,undefined);assert.equal(result.orders[0].phone,undefined);
-  assert.equal(result.products[0].stock,2);assert.equal(result.products[0].shortage,null);
+  assert.equal(result.products[0].stock,2);assert.equal(result.products[0].shortage,0);assert.equal(result.products[0].shortageEstimate,true);
   assert.equal(result.products[0].ordered,2);assert.equal(result.orders[0].lines[0].name,'遊戲甲');
   assert.equal(result.finance.income,100);assert.equal(result.finance.cost,0);
 });
@@ -108,4 +108,3 @@ test('baseline creates no old notifications; repeated snapshot no events',async(
 test('inventory includes history and finance only selected season',()=>{
   const value=ledger(input().ledger,config.season);assert.equal(value.stock.get('遊戲甲'),2);assert.equal(value.income,100);assert.equal(value.cost,0);
 });
-

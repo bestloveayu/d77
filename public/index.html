@@ -16,8 +16,8 @@
   <link rel="stylesheet" href="./push.css?v=20261101.12">
   <link rel="stylesheet" href="./swipe.css?v=20261101.15">
   <link rel="stylesheet" href="./order-followup.css?v=20261101.16">
-  <link rel="stylesheet" href="./transactions.css?v=20261102.2">
-  <script type="module" src="./app.js?v=20261102.2"></script>
+  <link rel="stylesheet" href="./transactions.css?v=20261102.3">
+  <script type="module" src="./app.js?v=20261102.3"></script>
 </head>
 <body>
   <header class="masthead"><div class="masthead-inner">
@@ -35,7 +35,7 @@
       <div class="sync-line"><span id="sync-status" role="status">尚未讀取</span><button id="refresh" class="icon-button" title="重新讀取雲端" aria-label="重新讀取雲端"><i data-lucide="refresh-cw"></i></button></div>
       <div id="error" class="error-banner" hidden role="alert"></div>
       <div id="view"></div>
-      <p class="footnote">東77 雲端管理 <span id="version">0.5.0</span> · 唯讀</p>
+      <p class="footnote">東77 雲端管理 <span id="version">0.6.0</span> · 唯讀</p>
     </section>
   </main>
   <nav id="nav" class="bottom-nav" aria-label="主要導覽" hidden>
@@ -43,7 +43,7 @@
     <a href="#orders" data-page="orders"><i data-lucide="clipboard-list"></i><span>訂單</span></a>
     <a href="#inventory" data-page="inventory"><i data-lucide="package"></i><span>庫存</span></a>
     <a href="#rules" data-page="rules"><i data-lucide="book-open"></i><span>規則</span></a>
-    <a href="#notifications" data-page="notifications"><i data-lucide="bell"></i><span>通知</span><b id="unread" hidden></b></a>
+    <a href="#transactions" data-page="transactions"><i data-lucide="chart-no-axes-combined"></i><span>收支</span></a>
   </nav>
   <dialog id="detail"><div class="dialog-heading"><h2 id="detail-title"></h2><button id="detail-close" class="icon-button" aria-label="關閉" title="關閉"><i data-lucide="x"></i></button></div><div id="detail-body"></div></dialog>
   <script src="https://accounts.google.com/gsi/client" async defer></script>

@@ -2,7 +2,8 @@ import {demoSnapshot,demoEvents} from './demo.js';
 import {showSeasonSettings} from './season-settings.js';
 import {SOURCE_DEFAULTS} from './season-config.js';
 import {stageLabel,orderProgressLabels} from './order-status.js';
-import {installSwipe} from './swipe.js?v=20261101.15';
+import {parseTimestamp} from './timestamp.js?v=20261102.3';
+import {installSwipe} from './swipe.js?v=20261102.3';
 import {createPushClient} from './push.js?v=20261102.1';
 import {classifyFollowUp,needsAttention,notificationChoices,notificationTypes} from './order-followup.js?v=20261101.16';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
@@ -13,7 +14,7 @@ const money=n=>n==null?'待核對':'$'+Number(n).toLocaleString('zh-TW');
 const num=n=>n==null?'—':n;
 const badge=(text,kind='')=>`<span class="badge ${kind}">${esc(text)}</span>`;
 const progressBadges=o=>{const task=followUp(o);return orderProgressLabels(o).map(p=>badge(p.text,p.good?'good':'')).join('')+(['registration','rules'].includes(task.kind)?badge(task.label,'warn'):task.kind==='review'?badge(task.reason||task.label,'warn'):'');};
-const names={overview:'營運總覽',orders:'顧客訂單',inventory:'庫存查詢',rules:'規則進度',notifications:'通知中心',transactions:'交易紀錄'};
+const names={overview:'營運總覽',orders:'顧客訂單',inventory:'庫存查詢',rules:'規則進度',notifications:'最新動態',transactions:'收支'};
 const eventIcon={order:'clipboard-list',change:'git-compare-arrows',shortage:'triangle-alert',rules:'book-open',activity:'package-check',registration:'clipboard-list','rules-pending':'mail'};
 const followUp=o=>o.followUp||classifyFollowUp(o);
 let data=null,events=[],token='',account='',demo=false,stale=false,busy=false,error='',page='overview',filter='all',search='',sort='new',timer;
@@ -36,37 +37,33 @@ function chrome(){
   const select=$('#season-select');select.innerHTML=seasonState.seasons.length?seasonState.seasons.map(s=>`<option value="${esc(s.season)}">${esc(s.season)}</option>`).join(''):'<option value="">未設定季別</option>';select.value=selectedSeason;select.disabled=busy||!seasonState.seasons.length;
   $('#sync-status').textContent=demo?'示範模式 · 未連接雲端':data?`${stale?'資料可能過期':'雲端資料已讀取'} · ${new Date(data.updatedAt).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}`:'尚無成功讀取資料';
   document.querySelectorAll('#nav a').forEach(a=>{a.classList.toggle('active',a.dataset.page===page);a.setAttribute('aria-current',a.dataset.page===page?'page':'false');});
-  const unread=events.filter(e=>!e.read).length;$('#unread').hidden=!unread;$('#unread').textContent=unread>99?'99+':unread;
   $('#refresh').disabled=busy;$('#refresh').classList.toggle('spin',busy);setError(error);
 }
 function heading(title,action){return `<div class="section-heading"><h2>${title}</h2>${action||''}</div>`;}
+function financeSummary(action='',className=''){
+  const due=data.finance.eastDue,dueText=due==null?'待核對':Math.round(due*100)===0?'已平衡':due<0?'于應給東':'東應給于';
+  return `<section class="section ${className}" aria-label="本季收支">${heading(esc(data.season)+' · 本季收支',action)}<div class="finance finance-overview"><div><small>收入</small><strong>${money(data.finance.income)}</strong></div><div><small>成本</small><strong>${money(data.finance.cost)}</strong></div><div><small>結餘</small><strong>${money(data.finance.profit)}</strong></div><div class="season-due"><small>${dueText}</small><strong>${due==null?'待核對':money(Math.abs(due))}</strong></div></div></section>`;
+}
 function overview(){
   const s=data.summary;
   const registration=data.orders.filter(o=>followUp(o).kind==='registration').length,rulesPending=data.orders.filter(o=>followUp(o).kind==='rules').length;
-  const stats=[['clipboard-list','訂單數',s.orders,''],['clock-3','待處理',data.orders.filter(needsAttention).length,''],['package-open','缺貨品項',s.shortages,'warn'],['book-open-check','規則已備齊',`${s.rulesReady}/${s.rulesTotal}`,'']];
+  const stats=[['clipboard-list','訂單數',s.orders,'','orders','all'],['clock-3','待出貨',registration,'','orders','registration'],['package-open','缺貨品項',s.shortages,'warn','inventory','shortage'],['book-open-check','規則已完成',`${s.rulesReady}/${s.rulesTotal}`,'','rules','ready']];
   const low=data.products.filter(p=>p.shortage>0).slice(0,4);
-  const due=data.finance.eastDue;
-  const dueText=due==null?'待核對':Math.round(due*100)===0?'已平衡':due<0?'于應給東':'東應給于';
-  const finance=`<section class="section overview-finance" aria-label="本季收支">${heading(esc(data.season)+' · 本季收支',`<button class="text-button" data-go="transactions">${icon('receipt-text')}交易紀錄 ${icon('chevron-right')}</button>`)}<div class="finance finance-overview"><div><small>收入</small><strong>${money(data.finance.income)}</strong></div><div><small>成本</small><strong>${money(data.finance.cost)}</strong></div><div><small>結餘</small><strong>${money(data.finance.profit)}</strong></div><div class="season-due"><small>${dueText}</small><strong>${due==null?'待核對':money(Math.abs(due))}</strong></div></div></section>`;
+  const finance=financeSummary(`<button class="text-button" data-go="transactions">查看全部 ${icon('chevron-right')}</button>`,'overview-finance');
   return `<section class="section">${heading('最新動態',`<button class="text-button" data-go="notifications">查看全部 ${icon('chevron-right')}</button>`)}${eventList(events.slice(0,3))}</section>
   <section class="section">${heading('待辦提醒')}
     <button class="alert-row warn" data-go="orders" data-filter="registration">${icon('clipboard-list')}<span class="text"><strong>${registration} 筆訂單待出貨登記</strong><small>已下單，尚未完成銷貨收入／出貨登記</small></span>${icon('chevron-right')}</button>
     <button class="alert-row" data-go="orders" data-filter="rules">${icon('mail')}<span class="text"><strong>${rulesPending} 筆訂單待寄規則</strong><small>已完成出貨登記，需要寄送的規則尚未寄齊</small></span>${icon('chevron-right')}</button>
-    <button class="alert-row warn" data-go="inventory" data-filter="shortage">${icon('triangle-alert')}<span class="text"><strong>${s.shortages} 款遊戲待補貨</strong><small>依已確認未出貨需求與帳面庫存計算</small></span>${icon('chevron-right')}</button>
-    <button class="alert-row" data-go="rules" data-filter="ready">${icon('book-open-check')}<span class="text"><strong>${s.rulesReady} 款中文規則已備齊</strong><small>查看訂購顧客與規則寄送狀態</small></span>${icon('chevron-right')}</button>
+    <button class="alert-row warn" data-go="inventory" data-filter="shortage">${icon('triangle-alert')}<span class="text"><strong>${s.shortages} 款遊戲待補貨</strong><small>包含出貨待核對品項的庫存差額估算</small></span>${icon('chevron-right')}</button>
+    <button class="alert-row" data-go="rules" data-filter="ready">${icon('book-open-check')}<span class="text"><strong>${s.rulesReady} 款中文規則已完成</strong><small>查看訂購顧客與規則寄送狀態</small></span>${icon('chevron-right')}</button>
     ${s.unknownStock?`<button class="alert-row warn" data-go="inventory" data-filter="unknown">${icon('circle-help')}<span class="text"><strong>${s.unknownStock} 款出貨證據待確認</strong><small>未將未知狀態當成零或缺貨</small></span>${icon('chevron-right')}</button>`:''}
   </section>
   ${finance}
   <section class="section">${heading('缺貨清單',`<button class="text-button" data-go="inventory">查看全部 ${icon('chevron-right')}</button>`)}${stockTable(low)}</section>
-  <div class="metrics">${stats.map(([i,label,count,kind])=>`<div class="metric ${kind}">${icon(i)}<div><span class="metric-label">${label}</span><strong>${count}</strong></div></div>`).join('')}</div>`;
+  <div class="metrics">${stats.map(([i,label,count,kind,target,targetFilter])=>`<button class="metric ${kind}" data-go="${target}" data-filter="${targetFilter}">${icon(i)}<span><span class="metric-label">${label}</span><strong>${count}</strong></span></button>`).join('')}</div>`;
 }
 function filters(placeholder,options,sortOptions,className=''){return `<div class="filters"><label class="search">${icon('search')}<input id="search" type="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${esc(search)}" autocomplete="off"></label>${sortOptions?`<select id="sort" aria-label="排序">${sortOptions.map(([value,label])=>`<option value="${value}" ${sort===value?'selected':''}>${label}</option>`).join('')}</select>`:''}</div><div class="segments ${className}">${options.map(([value,label])=>`<button data-filter="${value}" class="${filter===value?'active':''}" aria-pressed="${filter===value}">${label}</button>`).join('')}</div>`;}
-function parseTime(value){
-  let text=String(value||'').replace(/上午\s*/,'AM ').replace(/下午\s*/,'PM ');
-  const m=String(value||'').match(/(\d{4})\/(\d+)\/(\d+)\s*(上午|下午)?\s*(\d+):(\d+)(?::(\d+))?/);
-  if(m){let h=Number(m[5]);if(m[4]==='下午'&&h<12)h+=12;if(m[4]==='上午'&&h===12)h=0;text=`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}T${String(h).padStart(2,'0')}:${m[6]}:${m[7]||'00'}+08:00`;}
-  return Date.parse(text)||0;
-}
+const parseTime=value=>parseTimestamp(value)??0;
 function ordersView(){
   let rows=data.orders.filter(o=>(o.name+' '+(o.nickname||'')+' '+o.lines.map(l=>l.name).join(' ')).toLowerCase().includes(search.toLowerCase()));
   if(filter==='pending')rows=rows.filter(needsAttention);if(filter==='done')rows=rows.filter(o=>o.status==='已出貨');
@@ -76,15 +73,15 @@ function ordersView(){
   (rows.map(o=>`<article class="order"><div class="order-top"><div><button class="order-name" data-order="${esc(o.id)}">${esc(o.name||'姓名待核對')}${icon('chevron-right')}</button><p class="order-meta">${esc(o.nickname||'')}${o.nickname?' · ':''}${o.manual?'手動訂單':esc(o.time||'填單時間未記錄')}</p></div><strong>${money(o.total)}</strong></div><div class="badges">${badge(o.status,o.status==='已出貨'?'good':o.status==='待核對'?'bad':'warn')}${progressBadges(o)}${o.manual?badge('手動追加'):''}${o.phoneSuffix?badge('手機末碼 '+o.phoneSuffix):''}</div><div class="order-items">${o.lines.map(l=>`<span class="order-item">${icon('package')}${esc(l.name)} × ${num(l.quantity)}</span>`).join('')}</div></article>`).join('')||empty('沒有符合條件的訂單'));
 }
 function stockTable(rows,expanded=false){
-  if(expanded)return rows.length?`<div class="inventory-scroll" tabindex="0" aria-label="庫存明細"><div class="inventory-stock"><div class="stock-head"><span>品項</span><span>訂購量</span><span>全新</span><span>二手</span><span></span></div>${rows.map(p=>`<div class="stock-row"><button class="order-name stock-name" data-product="${esc(p.name)}">${esc(p.name)}</button><span class="num">${num(p.ordered)}</span><span class="num">${num(p.stock)}</span><span class="num">${num(p.usedStock)}</span><button class="icon-button" data-product="${esc(p.name)}" aria-label="查看 ${esc(p.name)}" title="查看品項">${icon('chevron-right')}</button></div>`).join('')}</div></div>`:empty('目前沒有符合條件的品項');
-  return rows.length?`<div class="stock-head"><span>品項</span><span>待出</span><span>庫存</span><span>缺貨</span><span></span></div>${rows.map(p=>`<div class="stock-row"><button class="order-name stock-name" data-product="${esc(p.name)}">${esc(p.name)}</button><span class="num">${num(p.outstanding)}</span><span class="num">${p.stock}</span><span class="num ${p.shortage>0?'deficit':''}">${num(p.shortage)}</span><button class="icon-button" data-product="${esc(p.name)}" aria-label="查看 ${esc(p.name)}" title="查看品項">${icon('chevron-right')}</button></div>`).join('')}`:empty('目前沒有符合條件的品項');
+  if(expanded)return rows.length?`<div class="inventory-scroll" tabindex="0" aria-label="庫存明細"><div class="inventory-stock"><div class="stock-head"><span>品項</span><span>訂購量</span><span>全新</span><span>二手</span><span></span></div>${rows.map(p=>`<div class="stock-row"><button class="order-name stock-name" data-product="${esc(p.name)}"><span>${esc(p.name)}</span>${p.shortage>0?`<small class="shortage-estimate">${p.shortageEstimate?'缺貨估算':'缺貨'} ${p.shortage} 盒</small>`:''}</button><span class="num">${num(p.ordered)}</span><span class="num ${p.shortage>0?'deficit':''}">${num(p.stock)}</span><span class="num">${num(p.usedStock)}</span><button class="icon-button" data-product="${esc(p.name)}" aria-label="查看 ${esc(p.name)}" title="查看品項">${icon('chevron-right')}</button></div>`).join('')}</div></div>`:empty('目前沒有符合條件的品項');
+  return rows.length?`<div class="stock-head"><span>品項</span><span>待出</span><span>庫存</span><span>缺貨</span><span></span></div>${rows.map(p=>`<div class="stock-row"><button class="order-name stock-name" data-product="${esc(p.name)}"><span>${esc(p.name)}</span>${p.shortageEstimate?'<small class="shortage-estimate">缺貨估算</small>':''}</button><span class="num">${num(p.outstanding)}</span><span class="num">${p.stock}</span><span class="num ${p.shortage>0?'deficit':''}">${num(p.shortage)}</span><button class="icon-button" data-product="${esc(p.name)}" aria-label="查看 ${esc(p.name)}" title="查看品項">${icon('chevron-right')}</button></div>`).join('')}`:empty('目前沒有符合條件的品項');
 }
 function inventoryView(){
   let rows=data.products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
   if(filter==='shortage')rows=rows.filter(p=>p.shortage>0);if(filter==='used')rows=rows.filter(p=>p.usedStock!==0);if(filter==='unknown')rows=rows.filter(p=>p.coverage==='unknown');
   const totalStock=p=>(p.stock??0)+(p.usedStock??0);
-  rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):sort==='ordered-desc'?(b.ordered??-1)-(a.ordered??-1):sort==='stock-desc'?totalStock(b)-totalStock(a):sort==='stock'?totalStock(a)-totalStock(b):(b.shortage??-1)-(a.shortage??-1));
-  return filters('搜尋品項',[['all','全部'],['shortage','缺貨'],['used','二手'],['unknown','待確認']],[['new','缺貨多到少'],['ordered-desc','訂購量由多至少'],['stock-desc','庫存由多至少'],['name','依名稱'],['stock','庫存少到多']])+stockTable(rows,true)+`<p class="read-only-note">${icon('info')} 庫存依歷年雲端金流計算，庫存排序採全新與二手合計。訂購量優先讀取本季統計表，空白時才依雲端訂單加總；出貨、待出、缺貨及核對原因可點開品項查看。</p>`;
+  rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):sort==='ordered-desc'?(b.ordered??-1)-(a.ordered??-1):sort==='stock-desc'?totalStock(b)-totalStock(a):sort==='stock'?totalStock(a)-totalStock(b):sort==='shortage'?(b.shortage??-1)-(a.shortage??-1):(b.stockUpdatedTime||0)-(a.stockUpdatedTime||0)||(b.stockUpdatedRow||0)-(a.stockUpdatedRow||0));
+  return filters('搜尋品項',[['all','全部'],['shortage','缺貨'],['used','二手'],['unknown','待確認']],[['new','更新時間新到舊'],['shortage','缺貨多到少'],['ordered-desc','訂購量由多至少'],['stock-desc','庫存由多至少'],['name','依名稱'],['stock','庫存少到多']])+stockTable(rows,true)+`<p class="read-only-note">${icon('info')} 更新時間依最近有效的庫存數量異動。出貨待核對時，缺貨先以訂購量減全新庫存估算；出貨證據完整時，先扣除已出貨量。</p>`;
 }
 function rulesView(){
   let rows=data.products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
@@ -94,15 +91,15 @@ function rulesView(){
   (rows.map(p=>`<article class="rule-row"><div class="rule-art">${icon(p.rules.length?'book-open-check':'book-open')}</div><div class="rule-main"><h3>${esc(p.name)}</h3>${badge(p.rules.length?'已完成':'尚無中文規則',p.rules.length?'good':'warn')}${links(p)}<p class="rule-meta">訂購 ${num(p.ordered)} 盒 · 對應 ${p.customers.length} 筆訂單</p></div><button class="icon-button" data-rule="${esc(p.name)}" title="查看訂購" aria-label="查看 ${esc(p.name)} 訂購顧客">${icon('chevron-right')}</button></article>`).join('')||empty('沒有符合條件的規則'));
 }
 function eventList(rows){return rows.length?rows.map(e=>`<article class="event ${e.read?'':'unread'}"><span class="event-icon">${icon(eventIcon[e.type]||'bell')}</span><div class="event-main"><button data-event="${esc(e.id)}">${esc(e.title)}</button><p>${esc(e.detail)}</p><p>${new Date(e.time).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</p></div></article>`).join(''):empty('目前沒有新通知');}
-function notificationsView(){return `<div class="section-heading"><span class="muted">最近 150 則</span><button id="read-all" class="text-button">${icon('check-check')}全部已讀</button></div><div class="segments"><button data-filter="all" class="${filter==='all'?'active':''}">全部</button><button data-filter="unread" class="${filter==='unread'?'active':''}">未讀</button></div>${eventList(events.filter(e=>filter!=='unread'||!e.read))}`;}
+function notificationsView(){return `<button class="text-button" data-go="overview">${icon('arrow-left')}返回營運總覽</button><div class="section-heading"><span class="muted">最近 150 則動態</span><button id="read-all" class="text-button">${icon('check-check')}全部已讀</button></div><div class="segments"><button data-filter="all" class="${filter==='all'?'active':''}">全部</button><button data-filter="unread" class="${filter==='unread'?'active':''}">未讀</button></div>${eventList(events.filter(e=>filter!=='unread'||!e.read))}`;}
 function transactionsView(){
   let rows=(data.transactions||[]).filter(t=>[t.name,t.subject,t.note,t.actor,t.transactionId].join(' ').toLowerCase().includes(search.toLowerCase())&&(filter==='all'||t.kind===filter));
   rows=[...rows].sort((a,b)=>(parseTime(a.time)-parseTime(b.time)||a.sourceRow-b.sourceRow)*(sort==='old'?1:-1));
-  return `<button class="text-button" data-go="overview">${icon('arrow-left')}返回營運總覽</button>`+filters('搜尋品項、顧客、名目或交易編號',[['all','全部'],...['進貨成本','銷貨收入','其他成本','其他收入','結算','未分類'].map(x=>[x,x])],[['new','時間新到舊'],['old','時間舊到新']],'transaction-filters')+`<p class="count-line">${esc(data.season)} · 共 ${rows.length} 筆明細</p>`+(rows.map(t=>`<article class="order"><div class="order-top"><div><button class="order-name" data-transaction="${esc(t.id)}">${esc(t.subject||t.name||'—')}${icon('chevron-right')}</button><p class="order-meta">${esc(t.time||'時間未記錄')} · ${esc(t.actor||'收付款人未記錄')}</p></div><strong>${money(t.amount)}</strong></div><div class="badges">${badge(t.kind,['銷貨收入','其他收入'].includes(t.kind)?'good':['進貨成本','其他成本'].includes(t.kind)?'warn':'')}${t.name?badge(t.name):''}${t.quantity?badge('數量 '+t.quantity):''}</div></article>`).join('')||empty(data.transactions?'沒有符合條件的交易':'尚未取得交易明細，請重新讀取雲端'));
+  return financeSummary()+filters('搜尋品項、顧客、名目或交易編號',[['all','全部'],...['進貨成本','銷貨收入','其他成本','其他收入','結算','未分類'].map(x=>[x,x])],[['new','時間新到舊'],['old','時間舊到新']],'transaction-filters')+`<p class="count-line">${esc(data.season)} · 共 ${rows.length} 筆明細</p>`+(rows.map(t=>`<article class="order"><div class="order-top"><div><button class="order-name" data-transaction="${esc(t.id)}">${esc(t.subject||t.name||'—')}${icon('chevron-right')}</button><p class="order-meta">${esc(t.time||'時間未記錄')} · ${esc(t.actor||'收付款人未記錄')}</p></div><strong>${money(t.amount)}</strong></div><div class="badges">${badge(t.kind,['銷貨收入','其他收入'].includes(t.kind)?'good':['進貨成本','其他成本'].includes(t.kind)?'warn':'')}${t.name?badge(t.name):''}${t.quantity?badge('數量 '+t.quantity):''}</div></article>`).join('')||empty(data.transactions?'沒有符合條件的交易':'尚未取得交易明細，請重新讀取雲端'));
 }
 function transactionDetail(id){
   const t=data.transactions?.find(t=>t.id===id);if(!t)return;
-  openDialog('交易明細',`<div class="badges">${badge(t.kind)}</div><h3>${esc(t.subject||t.name||'—')}</h3><p>${esc(t.time||'時間未記錄')} · ${esc(t.actor||'收付款人未記錄')}</p><p>品項：${esc(t.name||'—')}　數量：${num(t.quantity)}</p><div class="finance"><div><small>收入</small><strong>${money(t.income)}</strong></div><div><small>成本</small><strong>${money(t.cost)}</strong></div></div><p>結算（東給于）：${money(t.settlement)}</p><p class="transaction-note">${esc(t.note||'無備註')}</p><p class="transaction-id">交易編號：${esc(t.transactionId||'未記錄')}<br>來源列：${t.sourceRow}</p>`);
+  openDialog('交易明細',`<div class="badges">${badge(t.kind)}</div><h3>${esc(t.subject||t.name||'—')}</h3><p>${esc(t.time||'時間未記錄')} · ${esc(t.actor||'收付款人未記錄')}</p><p>品項：${esc(t.name||'—')}　數量：${num(t.quantity)}</p>${t.kind==='結算'?`<p>交易金額：${money(t.amount)}</p>`:''}<div class="finance"><div><small>收入</small><strong>${money(t.income)}</strong></div><div><small>成本</small><strong>${money(t.cost)}</strong></div></div><p class="transaction-note">${esc(t.note||'無備註')}</p><p class="transaction-id">交易編號：${esc(t.transactionId||'未記錄')}<br>來源列：${t.sourceRow}</p>`);
 }
 function render(){
   if(composingSearch&&document.activeElement?.id==='search'){chrome();return;}
@@ -153,7 +150,7 @@ function orderDetail(id){const o=data.orders.find(o=>o.id===id);if(!o)return;
     const p=data.products.find(p=>p.name===l.name);return `<div class="detail-line"><strong>${esc(l.name)}</strong><span class="amount">${num(l.quantity)} × ${money(l.price)}</span><div class="badges">${['purchased','shipped','mailed'].map(field=>badge(stageLabel(l,field),l.evidence?.[field]==='conflict'?'bad':l[field]>0?'good':'')).join('')}${badge(p?.rules.length?'已翻譯':'未翻譯',p?.rules.length?'good':'warn')}</div>${links(p)}</div>`;}).join('')}${o.issues?.length?`<p class="notice">${esc(o.issues.join('；'))}</p>`:''}`);
 }
 function productDetail(name,rulesOnly=false){const p=data.products.find(p=>p.name===name);if(!p)return;
-  openDialog(p.name,`${rulesOnly?'':`<div class="finance inventory-detail"><div><small>訂購量</small><strong>${num(p.ordered)}</strong></div><div><small>已確認出貨</small><strong>${p.shipped==null?'待核對':p.shipped}</strong></div><div><small>待出</small><strong>${p.outstanding==null?'待核對':p.outstanding}</strong></div><div><small>缺貨</small><strong>${p.shortage==null?'待核對':p.shortage}</strong></div><div><small>全新庫存</small><strong>${p.stock}</strong></div><div><small>二手庫存</small><strong>${p.usedStock}</strong></div></div>${p.coverage==='unknown'?`<p class="notice">${p.orderQuantityMismatch?`本季統計訂購量為 ${num(p.ordered)}，目前對應的顧客訂單量為 ${num(p.responseOrdered)}，數量尚未一致。`:'部分顧客訂單尚缺可核對的雲端出貨紀錄。'} 因此出貨、待出與缺貨暫列待核對，不代表沒有庫存或尚未出貨。</p>`:''}`}${links(p)}<h3>訂購顧客</h3>${p.customers.map(c=>`<div class="field"><button class="order-name" data-order="${esc(c.id)}">${esc(c.name)}${icon('chevron-right')}</button>${badge(c.mailed===1?'規則已寄':c.mailed===0?'規則未寄':'寄送未確認',c.mailed===1?'good':'')}</div>`).join('')||empty('目前沒有對應的訂購資料')}`);
+  openDialog(p.name,`${rulesOnly?'':`<div class="finance inventory-detail"><div><small>訂購量</small><strong>${num(p.ordered)}</strong></div><div><small>已確認出貨</small><strong>${p.shipped==null?'待核對':p.shipped}</strong></div><div><small>待出</small><strong>${p.outstanding==null?'待核對':p.outstanding}</strong></div><div><small>${p.shortageEstimate?'缺貨估算':'缺貨'}</small><strong>${p.shortage==null?'待核對':p.shortage}</strong></div><div><small>全新庫存</small><strong>${p.stock}</strong></div><div><small>二手庫存</small><strong>${p.usedStock}</strong></div></div>${p.stockUpdatedAt?`<p class="read-only-note">最近庫存異動：${esc(p.stockUpdatedAt)}</p>`:''}${p.coverage==='unknown'?`<p class="notice">${p.orderQuantityMismatch?`本季統計訂購量為 ${num(p.ordered)}，目前對應的顧客訂單量為 ${num(p.responseOrdered)}，數量尚未一致。`:'部分顧客訂單尚缺可核對的雲端出貨紀錄。'} 出貨與待出量仍待核對。${p.shortageEstimate?'缺貨先依訂購量減全新庫存估算，可能包含已出貨但尚未核對的數量。':'缺貨量也暫列待核對。'}</p>`:''}`}${links(p)}<h3>訂購顧客</h3>${p.customers.map(c=>`<div class="field"><button class="order-name" data-order="${esc(c.id)}">${esc(c.name)}${icon('chevron-right')}</button>${badge(c.mailed===1?'規則已寄':c.mailed===0?'規則未寄':'寄送未確認',c.mailed===1?'good':'')}</div>`).join('')||empty('目前沒有對應的訂購資料')}`);
 }
 async function markRead(ids){if(!ids.length)return;if(!demo)await api('/read',{ids});events.forEach(e=>{if(ids.includes(e.id))e.read=true;});render();}
 async function settings(){
@@ -236,10 +233,10 @@ document.addEventListener('click',async e=>{
   else if(b.id==='read-all'){try{await markRead(events.filter(e=>!e.read).map(e=>e.id));}catch(err){setError(err.message);}}
 });
 window.addEventListener('hashchange',()=>{page=names[location.hash.slice(1)]?location.hash.slice(1):'overview';render();window.scrollTo(0,0);});
-$('#nav').addEventListener('click',e=>{if(e.target.closest('a')){filter='all';search='';sort='new';}});
-installSwipe($('#workspace'),{current:()=>page,enabled:()=>page!=='transactions'&&!!data&&!busy&&!$('#workspace').hidden,navigate:target=>go(target),decorate:icons,preview:target=>{
+$('#nav').addEventListener('click',e=>{const link=e.target.closest('a');if(link){filter='all';search='';sort='new';if(link.dataset.page===page)render();}});
+installSwipe($('#workspace'),{current:()=>page,enabled:()=>page!=='notifications'&&!!data&&!busy&&!$('#workspace').hidden,navigate:target=>go(target),decorate:icons,preview:target=>{
   const previous={filter,search,sort};filter='all';search='';sort='new';
-  try{return ({overview,orders:ordersView,inventory:inventoryView,rules:rulesView,notifications:notificationsView}[target])();}
+  try{return ({overview,orders:ordersView,inventory:inventoryView,rules:rulesView,transactions:transactionsView}[target])();}
   finally{({filter,search,sort}=previous);}
 }});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&token)refresh();});
