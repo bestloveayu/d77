@@ -1,0 +1,5 @@
+.transaction-filters{display:flex;flex-wrap:wrap;gap:4px;background:none}
+.transaction-filters button{flex:1 0 90px;min-height:42px}
+.transaction-note{white-space:pre-wrap;overflow-wrap:anywhere}
+.transaction-id{overflow-wrap:anywhere;color:var(--muted);font-size:14px}
+@media(max-width:620px){.overview-finance .section-heading{align-items:center;gap:8px}.overview-finance h2{font-size:20px}.overview-finance .text-button{white-space:nowrap;font-size:14px}.transaction-filters button{flex-basis:26%}}

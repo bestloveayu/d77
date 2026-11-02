@@ -6,17 +6,18 @@ import {installSwipe} from './swipe.js?v=20261101.15';
 import {createPushClient} from './push.js?v=20261102.1';
 import {classifyFollowUp,needsAttention,notificationChoices,notificationTypes} from './order-followup.js?v=20261101.16';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
+const deviceStorage={get(key){try{return localStorage.getItem(key);}catch{return null;}},set(key,value){try{localStorage.setItem(key,value);return true;}catch{return false;}},remove(key){try{localStorage.removeItem(key);}catch{}}};
 const icon=name=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>n==null?'待核對':'$'+Number(n).toLocaleString('zh-TW');
 const num=n=>n==null?'—':n;
 const badge=(text,kind='')=>`<span class="badge ${kind}">${esc(text)}</span>`;
 const progressBadges=o=>{const task=followUp(o);return orderProgressLabels(o).map(p=>badge(p.text,p.good?'good':'')).join('')+(['registration','rules'].includes(task.kind)?badge(task.label,'warn'):task.kind==='review'?badge(task.reason||task.label,'warn'):'');};
-const names={overview:'營運總覽',orders:'顧客訂單',inventory:'庫存查詢',rules:'規則進度',notifications:'通知中心'};
+const names={overview:'營運總覽',orders:'顧客訂單',inventory:'庫存查詢',rules:'規則進度',notifications:'通知中心',transactions:'交易紀錄'};
 const eventIcon={order:'clipboard-list',change:'git-compare-arrows',shortage:'triangle-alert',rules:'book-open',activity:'package-check',registration:'clipboard-list','rules-pending':'mail'};
 const followUp=o=>o.followUp||classifyFollowUp(o);
 let data=null,events=[],token='',account='',demo=false,stale=false,busy=false,error='',page='overview',filter='all',search='',sort='new',timer;
-let selectedSeason=localStorage.getItem('d77-season')||'',requestEpoch=0,authGeneration=0,composingSearch=false;
+let selectedSeason=deviceStorage.get('d77-season')||'',requestEpoch=0,authGeneration=0,composingSearch=false;
 let seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};
 const demoEventStore=new Map();
 function demoSources(){return {revision:0,defaultSeason:'2026秋',canManage:true,seasons:['2026秋','2026春'].map(season=>({season,config:{season,spreadsheetId:'sample-book',catalogSheet:season+'品項統計',responseSheet:season+'預購回應',rulesFolderId:'sample-folder',...SOURCE_DEFAULTS,aliases:{},productColumns:{}},testedAt:new Date().toISOString()}))};}
@@ -46,7 +47,7 @@ function overview(){
   const low=data.products.filter(p=>p.shortage>0).slice(0,4);
   const due=data.finance.eastDue;
   const dueText=due==null?'待核對':Math.round(due*100)===0?'已平衡':due<0?'于應給東':'東應給于';
-  const finance=`<section class="section overview-finance" aria-label="本季收支">${heading(esc(data.season)+' · 本季收支')}<div class="finance finance-overview"><div><small>收入</small><strong>${money(data.finance.income)}</strong></div><div><small>成本</small><strong>${money(data.finance.cost)}</strong></div><div><small>結餘</small><strong>${money(data.finance.profit)}</strong></div><div class="season-due"><small>${dueText}</small><strong>${due==null?'待核對':money(Math.abs(due))}</strong></div></div></section>`;
+  const finance=`<section class="section overview-finance" aria-label="本季收支">${heading(esc(data.season)+' · 本季收支',`<button class="text-button" data-go="transactions">${icon('receipt-text')}交易紀錄 ${icon('chevron-right')}</button>`)}<div class="finance finance-overview"><div><small>收入</small><strong>${money(data.finance.income)}</strong></div><div><small>成本</small><strong>${money(data.finance.cost)}</strong></div><div><small>結餘</small><strong>${money(data.finance.profit)}</strong></div><div class="season-due"><small>${dueText}</small><strong>${due==null?'待核對':money(Math.abs(due))}</strong></div></div></section>`;
   return `<section class="section">${heading('最新動態',`<button class="text-button" data-go="notifications">查看全部 ${icon('chevron-right')}</button>`)}${eventList(events.slice(0,3))}</section>
   <section class="section">${heading('待辦提醒')}
     <button class="alert-row warn" data-go="orders" data-filter="registration">${icon('clipboard-list')}<span class="text"><strong>${registration} 筆訂單待出貨登記</strong><small>已下單，尚未完成銷貨收入／出貨登記</small></span>${icon('chevron-right')}</button>
@@ -94,10 +95,19 @@ function rulesView(){
 }
 function eventList(rows){return rows.length?rows.map(e=>`<article class="event ${e.read?'':'unread'}"><span class="event-icon">${icon(eventIcon[e.type]||'bell')}</span><div class="event-main"><button data-event="${esc(e.id)}">${esc(e.title)}</button><p>${esc(e.detail)}</p><p>${new Date(e.time).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</p></div></article>`).join(''):empty('目前沒有新通知');}
 function notificationsView(){return `<div class="section-heading"><span class="muted">最近 150 則</span><button id="read-all" class="text-button">${icon('check-check')}全部已讀</button></div><div class="segments"><button data-filter="all" class="${filter==='all'?'active':''}">全部</button><button data-filter="unread" class="${filter==='unread'?'active':''}">未讀</button></div>${eventList(events.filter(e=>filter!=='unread'||!e.read))}`;}
+function transactionsView(){
+  let rows=(data.transactions||[]).filter(t=>[t.name,t.subject,t.note,t.actor,t.transactionId].join(' ').toLowerCase().includes(search.toLowerCase())&&(filter==='all'||t.kind===filter));
+  rows=[...rows].sort((a,b)=>(parseTime(a.time)-parseTime(b.time)||a.sourceRow-b.sourceRow)*(sort==='old'?1:-1));
+  return `<button class="text-button" data-go="overview">${icon('arrow-left')}返回營運總覽</button>`+filters('搜尋品項、顧客、名目或交易編號',[['all','全部'],...['進貨成本','銷貨收入','其他成本','其他收入','結算','未分類'].map(x=>[x,x])],[['new','時間新到舊'],['old','時間舊到新']],'transaction-filters')+`<p class="count-line">${esc(data.season)} · 共 ${rows.length} 筆明細</p>`+(rows.map(t=>`<article class="order"><div class="order-top"><div><button class="order-name" data-transaction="${esc(t.id)}">${esc(t.subject||t.name||'—')}${icon('chevron-right')}</button><p class="order-meta">${esc(t.time||'時間未記錄')} · ${esc(t.actor||'收付款人未記錄')}</p></div><strong>${money(t.amount)}</strong></div><div class="badges">${badge(t.kind,['銷貨收入','其他收入'].includes(t.kind)?'good':['進貨成本','其他成本'].includes(t.kind)?'warn':'')}${t.name?badge(t.name):''}${t.quantity?badge('數量 '+t.quantity):''}</div></article>`).join('')||empty(data.transactions?'沒有符合條件的交易':'尚未取得交易明細，請重新讀取雲端'));
+}
+function transactionDetail(id){
+  const t=data.transactions?.find(t=>t.id===id);if(!t)return;
+  openDialog('交易明細',`<div class="badges">${badge(t.kind)}</div><h3>${esc(t.subject||t.name||'—')}</h3><p>${esc(t.time||'時間未記錄')} · ${esc(t.actor||'收付款人未記錄')}</p><p>品項：${esc(t.name||'—')}　數量：${num(t.quantity)}</p><div class="finance"><div><small>收入</small><strong>${money(t.income)}</strong></div><div><small>成本</small><strong>${money(t.cost)}</strong></div></div><p>結算（東給于）：${money(t.settlement)}</p><p class="transaction-note">${esc(t.note||'無備註')}</p><p class="transaction-id">交易編號：${esc(t.transactionId||'未記錄')}<br>來源列：${t.sourceRow}</p>`);
+}
 function render(){
   if(composingSearch&&document.activeElement?.id==='search'){chrome();return;}
   if(!data){$('#view').innerHTML=empty('尚無成功讀取資料，請檢查雲端連線設定');chrome();icons();return;}
-  $('#view').innerHTML=({overview,orders:ordersView,inventory:inventoryView,rules:rulesView,notifications:notificationsView}[page])();chrome();icons();
+  $('#view').innerHTML=({overview,orders:ordersView,inventory:inventoryView,rules:rulesView,notifications:notificationsView,transactions:transactionsView}[page])();chrome();icons();
   const field=$('#search');
   const applySearch=(input,force=false)=>{
     if(!force&&input.value===search)return;
@@ -114,7 +124,7 @@ async function api(path,body,authToken=token){
   if(!config.apiBase||!authToken)throw new Error('請先完成登入與雲端設定');
   const endpoint=new URL(config.apiBase.replace(/\/$/,'')+path);if(selectedSeason&&!path.startsWith('/seasons')&&path!=='/preferences')endpoint.searchParams.set('season',selectedSeason);
   const response=await fetch(endpoint,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+authToken,...(body===undefined?{}:{'Content-Type':'application/json'})},...(body===undefined?{}:{body:JSON.stringify(body)}),cache:'no-store',signal:AbortSignal.timeout(60000)});
-  const result=await response.json();if(!response.ok){if(response.status===401){if(authToken===token)logout(false);throw new Error('登入已過期，請重新登入');}throw new Error(result.error||'讀取失敗');}return result;
+  const result=await response.json();if(!response.ok){if(response.status===401||result.code==='AUTH_FORBIDDEN'){if(authToken===token)logout(false);throw new Error(result.code==='AUTH_FORBIDDEN'?'此帳號已無存取權限':'登入已過期，請重新登入');}throw new Error(result.error||'讀取失敗');}return result;
 }
 async function refresh(force=false){
   if(busy)return;const epoch=++requestEpoch;busy=true;chrome();
@@ -131,7 +141,7 @@ async function refresh(force=false){
   }catch(e){if(epoch===requestEpoch){error=e.name==='TimeoutError'?'連線逾時，保留本季上次成功資料':e.message;stale=true;}}
   finally{if(epoch===requestEpoch){busy=false;render();}}
 }
-async function changeSeason(season){requestEpoch++;busy=false;selectedSeason=season;localStorage.setItem('d77-season',season);data=null;events=[];filter='all';search='';sort='new';error='';await refresh();}
+async function changeSeason(season){requestEpoch++;busy=false;selectedSeason=season;deviceStorage.set('d77-season',season);data=null;events=[];filter='all';search='';sort='new';error='';await refresh();}
 function manageSeasons(){showSeasonSettings({demo,getState:()=>seasonState,api,openDialog,icons,
   saveDemo:({config,makeDefault})=>{seasonState={...seasonState,revision:seasonState.revision+1,defaultSeason:makeDefault||!seasonState.defaultSeason?config.season:seasonState.defaultSeason,seasons:[...seasonState.seasons.filter(s=>s.season!==config.season),{season:config.season,config,testedAt:new Date().toISOString()}]};},
   onSaved:async season=>{if(!demo)seasonState=await api('/seasons');await changeSeason(season);}
@@ -201,20 +211,25 @@ async function settings(){
 }
 async function logout(cleanup=true){
   const oldToken=token,remove=cleanup!==false&&!demo&&!!token;authGeneration++;
+  deviceStorage.remove('d77-session');
   requestEpoch++;busy=false;token='';account='';data=null;events=[];demo=false;seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};clearInterval(timer);$('#detail').close();$('#workspace').hidden=true;$('#nav').hidden=true;$('#login').hidden=false;$('#view').replaceChildren();$('#login-status').textContent='已登出';window.google?.accounts.id.disableAutoSelect();icons();
-  if(remove)try{await createPushClient((path,body)=>api(path,body,oldToken)).disable();}catch{/* Browser unsubscribe still runs if the API is unavailable. */}
+  if(remove){
+    try{await createPushClient((path,body)=>api(path,body,oldToken)).disable();}catch{/* Browser unsubscribe still runs if the API is unavailable. */}
+    finally{if(oldToken.startsWith('d77s_'))try{await api('/session/logout',{},oldToken);}catch{$('#login-status').textContent='本機已登出；雲端撤銷未確認，請連線後再次登入並登出。';}}
+  }
 }
 const demoButton=$('#demo-enter');
 if(demoButton)demoButton.onclick=()=>{demo=true;seasonState=demoSources();selectedSeason='2026秋';data=demoData(selectedSeason);events=seasonEvents(selectedSeason);error='';showWorkspace();};
 $('#season-select').onchange=e=>changeSeason(e.target.value);
 $('#refresh').onclick=()=>refresh(true);$('#settings').onclick=settings;$('#detail-close').onclick=()=>$('#detail').close();
-$('#theme').onclick=()=>{document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';localStorage.setItem('d77-theme',document.documentElement.dataset.theme);};
-document.documentElement.dataset.theme=localStorage.getItem('d77-theme')||'light';
+$('#theme').onclick=()=>{document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';deviceStorage.set('d77-theme',document.documentElement.dataset.theme);};
+document.documentElement.dataset.theme=deviceStorage.get('d77-theme')||'light';
 document.addEventListener('click',async e=>{
   const b=e.target.closest('button');if(!b||b.disabled)return;
   if(b.dataset.go)go(b.dataset.go,b.dataset.filter||'all');
   else if(b.dataset.filter){filter=b.dataset.filter;render();}
   else if(b.dataset.order)orderDetail(b.dataset.order);
+  else if(b.dataset.transaction)transactionDetail(b.dataset.transaction);
   else if(b.dataset.product)productDetail(b.dataset.product);
   else if(b.dataset.rule)productDetail(b.dataset.rule,true);
   else if(b.dataset.event){const event=events.find(x=>x.id===b.dataset.event);try{await markRead([event.id]);$('#detail').close();go(event.target.page);if(event.target.id)orderDetail(event.target.id);else if(event.target.name){search=event.target.name;render();}}catch(err){setError(err.message);}}
@@ -222,7 +237,7 @@ document.addEventListener('click',async e=>{
 });
 window.addEventListener('hashchange',()=>{page=names[location.hash.slice(1)]?location.hash.slice(1):'overview';render();window.scrollTo(0,0);});
 $('#nav').addEventListener('click',e=>{if(e.target.closest('a')){filter='all';search='';sort='new';}});
-installSwipe($('#workspace'),{current:()=>page,enabled:()=>!!data&&!busy&&!$('#workspace').hidden,navigate:target=>go(target),decorate:icons,preview:target=>{
+installSwipe($('#workspace'),{current:()=>page,enabled:()=>page!=='transactions'&&!!data&&!busy&&!$('#workspace').hidden,navigate:target=>go(target),decorate:icons,preview:target=>{
   const previous={filter,search,sort};filter='all';search='';sort='new';
   try{return ({overview,orders:ordersView,inventory:inventoryView,rules:rulesView,notifications:notificationsView}[target])();}
   finally{({filter,search,sort}=previous);}
@@ -231,12 +246,25 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&token)ref
 async function initializeGoogle(){
   if(!config.googleClientId||!config.apiBase){$('#login-status').textContent='正式雲端連線尚未設定，可先瀏覽示範資料。';icons();return;}
   if(!/^https:\/\//.test(config.apiBase)){ $('#login-status').textContent='API 必須使用 HTTPS';return;}
+  await restoreSession();
   for(let n=0;n<40&&!window.google?.accounts?.id;n++)await new Promise(r=>setTimeout(r,250));
   if(!window.google?.accounts?.id){$('#login-status').textContent='Google 登入未載入，請檢查網路後重新整理。';return;}
   window.google.accounts.id.initialize({client_id:config.googleClientId,auto_select:false,callback:async result=>{
-    authGeneration++;token=result.credential;demo=false;account='Google 授權成員';showWorkspace();await refresh();if(token){timer=setInterval(()=>{if(!document.hidden)refresh();},60000);}
+    const generation=++authGeneration;token=result.credential;demo=false;account='Google 授權成員';deviceStorage.remove('d77-session');let persistenceWarning='';
+    if($('#remember-login').checked){
+      try{const session=await api('/session',{});if(generation!==authGeneration)return;token=session.token;account=session.viewer;if(!deviceStorage.set('d77-session',JSON.stringify({token:session.token,expiresAt:session.expiresAt})))persistenceWarning='瀏覽器不允許保存登入；目前僅在此頁面登入。';}
+      catch(e){if(generation!==authGeneration)return;token='';$('#login-status').textContent='無法保存登入：'+e.message;return;}
+    }
+    showWorkspace();await refresh();if(persistenceWarning)setError(persistenceWarning);if(token){clearInterval(timer);timer=setInterval(()=>{if(!document.hidden)refresh();},60000);}
   }});
   window.google.accounts.id.renderButton($('#google-login'),{theme:'outline',size:'large',text:'signin_with',locale:'zh_TW'});icons();
 }
+async function restoreSession(){
+  let saved;try{saved=JSON.parse(deviceStorage.get('d77-session')||'null');}catch{deviceStorage.remove('d77-session');return;}
+  if(!saved)return;
+  if(!/^d77s_[a-f0-9]{64}$/.test(saved.token)||!Number.isFinite(saved.expiresAt)||saved.expiresAt<=Date.now()){deviceStorage.remove('d77-session');return;}
+  const generation=++authGeneration;token=saved.token;$('#login-status').textContent='正在恢復登入…';
+  try{const session=await api('/session');if(generation!==authGeneration)return;account=session.viewer;showWorkspace();await refresh();if(token){clearInterval(timer);timer=setInterval(()=>{if(!document.hidden)refresh();},60000);}}
+  catch(e){if(generation===authGeneration){token='';$('#login-status').textContent='無法恢復登入：'+e.message;}}
+}
 initializeGoogle();icons();window.addEventListener('load',icons);
-

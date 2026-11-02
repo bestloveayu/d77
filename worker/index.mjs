@@ -1,4 +1,5 @@
 import { authenticate, collect } from './google.mjs';
+import {SessionStore,sessionBearer,sessionCall} from './session.mjs';
 import { changes, digest } from './model.mjs';
 import {SeasonRegistry} from './seasons.mjs';
 import {PushService,defaultPreferences} from './browser-push.mjs';
@@ -12,15 +13,35 @@ async function seasonTarget(env,season,user){
   const entry=await response.json();
   return {stub:env.BOARD.get(env.BOARD.idFromName(seasonObjectName(entry))),entry};
 }
-export default {
+export function createWorker(authenticateGoogle=authenticate){return {
   async fetch(request,env){
     const origin=request.headers.get('Origin');
     const cors={'Access-Control-Allow-Origin':env.ALLOWED_ORIGIN,'Vary':'Origin','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Allow-Methods':'GET, POST, OPTIONS'};
     if(origin&&origin!==env.ALLOWED_ORIGIN)return json({error:'來源不允許'},403);
     if(request.method==='OPTIONS')return new Response(null,{status:204,headers:cors});
     const url=new URL(request.url),path=url.pathname;
-    if(!['/snapshot','/refresh','/notifications','/read','/preferences','/push/status','/push/device','/seasons','/seasons/test','/seasons/save'].includes(path))return json({error:'找不到端點'},404,cors);
-    let user;try{user=await authenticate(request,env);}catch(e){return json({error:e.status?e.message:'登入驗證失敗，請重新登入'},e.status||401,cors);}
+    if(!['/session','/session/logout','/snapshot','/refresh','/notifications','/read','/preferences','/push/status','/push/device','/seasons','/seasons/test','/seasons/save'].includes(path))return json({error:'找不到端點'},404,cors);
+    const isSession=path==='/session'||path==='/session/logout',token=sessionBearer(request);
+    if(isSession&&!(path==='/session'?['GET','POST']:['POST']).includes(request.method))return json({error:'方法不允許'},405,cors);
+    const wrap=response=>new Response(response.body,{status:response.status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+    let user;try{
+      if(isSession&&request.method==='POST'&&(Number(request.headers.get('Content-Length')||0)>8192||(await request.text()).length>8192))return json({error:'請求過大'},413,cors);
+      if(path==='/session'&&request.method==='POST'){
+        if(token)return json({error:'請使用 Google 重新登入'},401,cors);
+        user=await authenticateGoogle(request,env);
+        return wrap(await sessionCall(env,'issue',user));
+      }
+      if(token){
+        const response=await sessionCall(env,path==='/session/logout'?'logout':'restore',{token});
+        if(response.status===403)return json({error:'此帳號沒有看板存取權限',code:'AUTH_FORBIDDEN'},403,cors);
+        if(!response.ok||path==='/session/logout')return wrap(response);
+        user=await response.json();
+        if(path==='/session')return json({viewer:user.email,expiresAt:user.expiresAt},200,cors);
+      }else{
+        if(isSession)return json({error:'請使用應用程式登入憑證'},401,cors);
+        user=await authenticateGoogle(request,env);
+      }
+    }catch(e){return json({error:e.status?e.message:'登入驗證失敗，請重新登入',...(e.status===403?{code:'AUTH_FORBIDDEN'}:{})},e.status||401,cors);}
     try{
       if(['/snapshot','/notifications','/seasons','/push/status'].includes(path)&&request.method!=='GET')return json({error:'方法不允許'},405,cors);
       if(!['/snapshot','/notifications','/preferences','/seasons','/push/status'].includes(path)&&request.method!=='POST')return json({error:'方法不允許'},405,cors);
@@ -44,7 +65,8 @@ export default {
   async scheduled(event,env,ctx){
     ctx.waitUntil((async()=>{const target=await seasonTarget(env,null,'scheduler');if(!target.error)await target.stub.fetch('https://internal/refresh',{method:'POST',headers:{'X-Source-Config':JSON.stringify(target.entry.config),'X-Notify':'1'}});})());
   }
-};
+};}
+export default createWorker();
 export class BoardStore {
   constructor(ctx,env){this.ctx=ctx;this.env=env;this.pending=null;this.pushQueue=Promise.resolve();}
   async snapshot(){
@@ -111,6 +133,7 @@ export class BoardStore {
   }
   async fetch(request){
     const path=new URL(request.url).pathname,user=request.headers.get('X-User'),email=request.headers.get('X-Email');
+    if(path.startsWith('/internal/session/'))return new SessionStore(this.ctx.storage,this.env).handle(request);
     if(path.startsWith('/seasons')||path==='/internal/config')return new SeasonRegistry(this.ctx.storage,this.env,collect).handle(request);
     const push=new PushService(this.ctx.storage,this.env);
     const exclusive=fn=>{const task=this.pushQueue.then(fn);this.pushQueue=task.catch(()=>{});return task;};
@@ -161,4 +184,3 @@ export class BoardStore {
     return json({error:'找不到端點'},404);
   }
 }
-

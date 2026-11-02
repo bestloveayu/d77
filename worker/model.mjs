@@ -113,7 +113,7 @@ export async function parseResponses(rows, config, items) {
 }
 export function ledger(rows, season) {
   const records = table(rows,['品項','增減數量','東收入','于收入','東支出','于支出','季別']);
-  const stock = new Map(); let income=0,cost=0,eastDue=0; const issues=[];
+  const stock = new Map(); let income=0,cost=0,eastDue=0; const issues=[],transactions=[];
   // Inventory is all-history; finance is the selected season only.
   for (const r of records) {
     const name=String(r.get('品項')).trim(), raw=r.get('增減數量'), q=raw===''?0:n(raw);
@@ -121,13 +121,21 @@ export function ledger(rows, season) {
     if (name && q) stock.set(name,(stock.get(name)||0)+q);
     if (String(r.get('季別')).trim()!==season) continue;
     const values=['東收入','于收入','東支出','于支出'].map(k => r.get(k)===''?0:n(r.get(k)));
+    const note=String(r.get('備註')).trim(),parts=note.split(/[/／]/).map(s=>s.trim());
+    if(['GM','GM採購','一般','一般販售'].includes(parts[0]))parts.shift();
+    const labels={'進貨':'進貨成本','進貨成本':'進貨成本','出貨':'銷貨收入','銷貨收入':'銷貨收入','其他支出':'其他成本','其他成本':'其他成本','其他收入':'其他收入','結算':'結算'};
+    const settlementValue=r.get('結餘(東給于)')===''?0:n(r.get('結餘(東給于)'));
+    const kind=labels[parts[0]]||(settlementValue?'結算':q<0?'銷貨收入':q>0?'進貨成本':'未分類');
+    const cash=values.some(v=>v===null)?null:kind==='結算'?settlementValue:['銷貨收入','其他收入'].includes(kind)?values[0]+values[1]:['進貨成本','其他成本'].includes(kind)?values[2]+values[3]:null;
+    const actor=['小東','于正'].filter((_,i)=>values[i]||values[i+2]).join('、');
+    transactions.push({id:'row-'+r.row,sourceRow:r.row,transactionId:String(r.get('交易編號')).trim(),time:String(r.get('時間戳記')||r.get('日期')),kind,subject:String(r.get('顧客姓名')||r.get('客戶姓名')||r.get('姓名')||parts[1]||''),name,quantity:q,amount:cash,actor,note,income:values[0]===null||values[1]===null?null:values[0]+values[1],cost:values[2]===null||values[3]===null?null:values[2]+values[3],settlement:settlementValue});
     if (values.some(v=>v===null)) {issues.push('金流第 '+r.row+' 列金額無法辨識');eastDue=null;continue;}
     income+=values[0]+values[1];cost+=values[2]+values[3];
     const settlement=r.get('結餘(東給于)')===''?0:n(r.get('結餘(東給于)'));
     if(settlement===null){issues.push('金流第 '+r.row+' 列結算金額無法辨識');eastDue=null;}
     else if(eastDue!==null)eastDue+=(values[0]+values[3]-values[2]-values[1])/2-settlement;
   }
-  return {stock,income,cost,eastDue,issues};
+  return {stock,income,cost,eastDue,issues,transactions};
 }
 function orderedJson(value) {
   if (Array.isArray(value)) return '['+value.map(orderedJson).join(',')+']';
@@ -202,7 +210,7 @@ export async function compose(input, config, now = new Date().toISOString()) {
     delete order.email;order.phoneSuffix=order.phone?.slice(-3)||'';delete order.phone;
   }
   return {season:config.season,updatedAt:now,followUpVersion:1,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
-    issues:money.issues,operations:team.operations.filter(o=>o.season===config.season).map(o=>({id:o.id,actor:o.actor,kind:o.kind,status:o.status,time:o.updatedAt||o.createdAt})),
+    transactions:money.transactions,issues:money.issues,operations:team.operations.filter(o=>o.season===config.season).map(o=>({id:o.id,actor:o.actor,kind:o.kind,status:o.status,time:o.updatedAt||o.createdAt})),
     sourceStatus:{catalog:'ok',responses:'ok',ledger:'ok',team:'ok',documents:'ok',rules:'ok'},
     summary:{orders:orders.length,attention:orders.filter(needsAttention).length,registrationPending:orders.filter(o=>o.followUp.kind==='registration').length,rulesPending:orders.filter(o=>o.followUp.kind==='rules').length,shortages:products.filter(p=>p.shortage>0).length,unknownStock:products.filter(p=>p.coverage==='unknown').length,
       rulesReady:products.filter(p=>p.rules.length).length,rulesTotal:products.length}};
@@ -230,4 +238,3 @@ export async function changes(previous, next) {
     await add('activity',o.id,(o.actor||'成員')+'完成'+({shipment:'出貨登記',purchase:'下單',mail:'規則寄送'}[o.kind]||'協作操作'),'雲端已確認',{page:'notifications'},o.time);
   return events;
 }
-
