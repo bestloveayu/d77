@@ -1,5 +1,6 @@
 import {demoSnapshot,demoEvents} from './demo.js';
 import {showSeasonSettings} from './season-settings.js';
+import {mountWidgetSettings} from './widget-settings.js?v=20261105.1';
 import {SOURCE_DEFAULTS} from './season-config.js';
 import {stageLabel,orderProgressLabels} from './order-status.js';
 import {parseTimestamp} from './timestamp.js?v=20261102.3';
@@ -32,7 +33,10 @@ function empty(text){return `<div class="empty">${icon('inbox')}${esc(text)}</di
 function setError(message){error=message||'';$('#error').hidden=!error;$('#error').textContent=error;}
 function showWorkspace(){
   $('#login').hidden=true;$('#workspace').hidden=false;$('#nav').hidden=false;$('#demo-label').hidden=!demo;
-  page=names[location.hash.slice(1)]?location.hash.slice(1):'overview';render();
+  page=names[location.hash.slice(1)]?location.hash.slice(1):'overview';
+  const widgetFilter=new URLSearchParams(location.search).get('widgetFilter');
+  if((page==='orders'&&['pending','registration','rules'].includes(widgetFilter))||(page==='inventory'&&widgetFilter==='shortage'))filter=widgetFilter;
+  render();
 }
 function chrome(){
   $('#page-title').textContent=names[page];
@@ -194,6 +198,7 @@ async function settings(){
   }
   $('#prefs').onsubmit=async e=>{e.preventDefault();const form=new FormData(e.target);const body={pushEnabled:form.has('pushEnabled'),quiet:form.has('quiet'),quietStart:Number(form.get('quietStart')),quietEnd:Number(form.get('quietEnd')),types:form.getAll('types')};try{if(!demo)await api('/preferences',body);$('#prefs-status').textContent=demo?'示範設定，未寫入雲端':'設定已儲存';}catch(err){$('#prefs-status').textContent=err.message;}};
   $('#logout').onclick=logout;
+  mountWidgetSettings({form:$('#prefs'),api:settingsApi,isCurrent:sameSession,demo});
   const pushSection=document.createElement('section');pushSection.className='setting-section push-settings';
   pushSection.innerHTML=`<h3>此裝置通知</h3><p id="push-status" role="status">正在讀取裝置狀態…</p><div class="section-actions"><button id="push-enable" type="button">${icon('bell-ring')}啟用通知</button><button id="push-test" type="button">${icon('send')}測試通知</button><button id="push-disable" type="button">${icon('bell-off')}停用此裝置</button></div>`;
   $('#prefs').before(pushSection);

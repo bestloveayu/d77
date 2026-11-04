@@ -1,0 +1,91 @@
+package tw.d77.widget;
+
+import android.app.PendingIntent;
+import android.appwidget.*;
+import android.content.*;
+import android.content.res.Configuration;
+import android.os.Bundle;
+import android.graphics.Color;
+import android.widget.RemoteViews;
+import org.json.*;
+
+public final class BoardWidget extends AppWidgetProvider {
+    static final String REFRESH = "tw.d77.widget.REFRESH";
+    @Override public void onReceive(Context c, Intent i) {
+        super.onReceive(c, i);
+        if (REFRESH.equals(i.getAction()) && Sync.allowManual()) {
+            Sync.requestRefresh(c);
+        } else if (Intent.ACTION_BOOT_COMPLETED.equals(i.getAction())) { Sync.schedule(c); renderAll(c); }
+    }
+    @Override public void onUpdate(Context c, AppWidgetManager m, int[] ids) { renderAll(c); Sync.schedule(c); }
+    @Override public void onAppWidgetOptionsChanged(Context c, AppWidgetManager m, int id, Bundle o) { render(c, m, id); }
+    @Override public void onDeleted(Context c, int[] ids) { for (int id : ids) new Vault(c).remove(id); }
+    @Override public void onDisabled(Context c) { c.getSystemService(android.app.job.JobScheduler.class).cancel(Sync.JOB); }
+    static void renderAll(Context c) {
+        AppWidgetManager m = AppWidgetManager.getInstance(c);
+        for (int id : m.getAppWidgetIds(new ComponentName(c, BoardWidget.class))) render(c, m, id);
+    }
+    private static PendingIntent open(Context c, String page) {
+        return open(c,page,"");
+    }
+    private static PendingIntent open(Context c, String page, String filter) {
+        Intent i = new Intent(c, OpenActivity.class).putExtra("page", OpenActivity.page(page)).putExtra("filter",filter);
+        return PendingIntent.getActivity(c, 100 + (OpenActivity.page(page)+":"+filter).hashCode(), i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+    static void render(Context c, AppWidgetManager m, int id) {
+        Vault v = new Vault(c); JSONObject state = v.read(), data = state.optJSONObject("data");
+        if (Session.expired(state)) { Sync.clear(c); state = new JSONObject(); data = null; }
+        boolean login = state.optString("token").isEmpty();
+        String mode = v.theme(id);
+        boolean dark = "night".equals(mode) || ("system".equals(mode) && (c.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
+        int fg = Color.parseColor(dark ? "#F0F3E9" : "#183E2C"), muted = Color.parseColor(dark ? "#B7CABB" : "#526A59");
+        RemoteViews r = new RemoteViews(c.getPackageName(), R.layout.widget_board);
+        r.setInt(R.id.root, "setBackgroundResource", dark ? R.drawable.widget_background_dark : R.drawable.widget_background);
+        for (int view : new int[]{R.id.heading,R.id.settings,R.id.refresh,R.id.purchase,R.id.shipment,R.id.rules,R.id.shortage}) r.setTextColor(view, fg);
+        r.setTextColor(R.id.status, muted);
+        r.setTextViewText(R.id.heading, "東77" + (data == null ? "" : " · " + clean(data.optString("season"), 24)));
+        boolean stale = state.optBoolean("failed") || (data != null && (data.optBoolean("stale") || (!data.isNull("error") && !data.optString("error").isEmpty())));
+        r.setTextViewText(R.id.status, login ? "請先配對" : data == null ? "等待同步" : (stale ? "更新未完成 · " : "更新於 ") + formattedTime(data.optString("updatedAt")));
+        PendingIntent setup = PendingIntent.getActivity(c, id, new Intent(c, SetupActivity.class).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        r.setOnClickPendingIntent(R.id.settings, setup);
+        r.setOnClickPendingIntent(R.id.heading, login ? setup : open(c,"overview"));
+        r.setOnClickPendingIntent(R.id.refresh, login ? setup : PendingIntent.getBroadcast(c, 7, new Intent(c, BoardWidget.class).setAction(REFRESH), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+        r.removeAllViews(R.id.feed);
+        int height=m.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT,110);
+        int rows = LayoutMetrics.rows(height,c.getResources().getConfiguration().fontScale);
+        JSONArray todos = data == null ? null : data.optJSONArray("todos"), events = data == null ? null : data.optJSONArray("events");
+        int t = 0, e = 0;
+        for (int n = 0; n < rows; n++) {
+            boolean todo = n % 2 == 0;
+            JSONObject item = todo && todos != null ? todos.optJSONObject(t++) : !todo && events != null ? events.optJSONObject(e++) : null;
+            if (item == null && todos != null && t < todos.length()) { item = todos.optJSONObject(t++); todo = true; }
+            if (item == null && events != null && e < events.length()) { item = events.optJSONObject(e++); todo = false; }
+            if (item == null && n > 0) break;
+            RemoteViews row = new RemoteViews(c.getPackageName(), R.layout.widget_row);
+            String text = login ? "連結 D77 帳戶" : item == null ? "目前沒有新待辦" : (todo ? "待辦  " : "動態  ") + clean(item.optString("title"),60) + "  " + clean(item.optString("body"),100);
+            row.setTextViewText(R.id.row_title, text); row.setTextColor(R.id.row_title, fg);
+            row.setTextColor(R.id.row_body, muted);
+            row.setViewVisibility(R.id.row_body,height>=230&&item!=null?android.view.View.VISIBLE:android.view.View.GONE);
+            row.setTextViewText(R.id.row_body,item==null?"":clean(item.optString("body"),100)+(item.isNull("time")?"":" · "+formattedTime(item.optString("time"))));
+            if(height>=230&&item!=null)row.setTextViewText(R.id.row_title,(todo?"待辦  ":"動態  ")+clean(item.optString("title"),60));
+            row.setOnClickPendingIntent(R.id.row, login ? setup : open(c, item == null ? "overview" : item.optString("page")));
+            r.addView(R.id.feed,row);
+        }
+        String[] keys = {"awaitingPurchase","awaitingShipment","awaitingRules","shortage"};
+        String[] labels = {"待下單","待出貨","待寄規則","缺貨"};
+        int[] views = {R.id.purchase,R.id.shipment,R.id.rules,R.id.shortage};
+        JSONObject counts = data == null ? null : data.optJSONObject("counts");
+        for (int n = 0; n < 4; n++) {
+            Object raw = counts == null ? null : counts.opt(keys[n]);
+            String value = Sync.validCount(raw) ? String.valueOf(((Number)raw).longValue()) : "—";
+            r.setTextViewText(views[n], value + "\n" + labels[n]);
+            r.setOnClickPendingIntent(views[n],login ? setup : open(c,n == 3 ? "inventory" : "orders",new String[]{"pending","registration","rules","shortage"}[n]));
+        }
+        m.updateAppWidget(id,r);
+    }
+    private static String clean(String s, int max) { s = s.replaceAll("[\\p{Cntrl}]", " "); return s.substring(0,Math.min(s.length(),max)); }
+    private static String formattedTime(String value) {
+        try { return java.time.Instant.parse(value).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("MM/dd HH:mm")); }
+        catch (Exception e) { return "時間待確認"; }
+    }
+}

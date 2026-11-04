@@ -4,6 +4,7 @@ import { changes, digest } from './model.mjs';
 import {SeasonRegistry} from './seasons.mjs';
 import {PushService,defaultPreferences} from './browser-push.mjs';
 import {notificationTypes} from '../public/order-followup.js';
+import {WidgetStore,widgetSummary} from './widget.mjs';
 const json=(body,status=200,headers={})=>Response.json(body,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
 export const seasonObjectName=entry=>'season:'+entry.season+':'+entry.configDigest;
 async function seasonTarget(env,season,user){
@@ -20,7 +21,32 @@ export function createWorker(authenticateGoogle=authenticate){return {
     if(origin&&origin!==env.ALLOWED_ORIGIN)return json({error:'來源不允許'},403);
     if(request.method==='OPTIONS')return new Response(null,{status:204,headers:cors});
     const url=new URL(request.url),path=url.pathname;
-    if(!['/session','/session/logout','/snapshot','/refresh','/notifications','/read','/preferences','/push/status','/push/device','/seasons','/seasons/test','/seasons/save'].includes(path))return json({error:'找不到端點'},404,cors);
+    if(!['/session','/session/logout','/snapshot','/refresh','/notifications','/read','/preferences','/push/status','/push/device','/seasons','/seasons/test','/seasons/save','/widget/pair','/widget/redeem','/widget/revoke','/widget/logout','/widget/data'].includes(path))return json({error:'找不到端點'},404,cors);
+    if(['/widget/redeem','/widget/data','/widget/logout'].includes(path)){
+      const expected=path==='/widget/data'?'GET':'POST';if(request.method!==expected)return json({error:'方法不允許'},405,cors);
+      try{
+        const shared=env.BOARD.get(env.BOARD.idFromName('shared-v1'));
+        const call=(action,body)=>shared.fetch('https://internal/internal/widget/'+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        if(path==='/widget/redeem'){
+          if(Number(request.headers.get('Content-Length')||0)>512)return json({error:'請求過大'},413,cors);
+          const raw=await request.text();if(raw.length>512)return json({error:'請求過大'},413,cors);
+          let body;try{body=JSON.parse(raw);}catch{return json({error:'配對格式不正確'},400,cors);}
+          const response=await call('redeem',{code:body.code,ip:request.headers.get('CF-Connecting-IP')||'unknown'});
+          return json(await response.json(),response.status,cors);
+        }
+        const widgetToken=request.headers.get('Authorization')?.match(/^Bearer (d77w_[a-f0-9]{64})$/)?.[1];
+        const restored=await call(path==='/widget/logout'?'logout':'restore',{token:widgetToken});
+        const user=await restored.json();if(!restored.ok||path==='/widget/logout')return json(user,restored.status,cors);
+        const target=await seasonTarget(env,null,user.sub);if(target.error)return json({error:'尚未設定預設季別'},503,cors);
+        const headers={'X-User':user.sub,'X-Email':user.email,'X-Source-Config':JSON.stringify(target.entry.config),'X-Notify':target.entry.isDefault?'1':'0'};
+        const response=await target.stub.fetch('https://internal/snapshot',{headers});
+        if(!response.ok)return json({error:'雲端資料暫時無法取得'},503,cors);
+        const data=await response.json();
+        const eventsResponse=await target.stub.fetch('https://internal/notifications',{headers});
+        const events=eventsResponse.ok?(await eventsResponse.json()).events:[];
+        return json(widgetSummary(data.snapshot,events,data.stale,data.error),200,cors);
+      }catch{return json({error:'小工具暫時無法更新，請稍後重試'},503,cors);}
+    }
     const isSession=path==='/session'||path==='/session/logout',token=sessionBearer(request);
     if(isSession&&!(path==='/session'?['GET','POST']:['POST']).includes(request.method))return json({error:'方法不允許'},405,cors);
     const wrap=response=>new Response(response.body,{status:response.status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
@@ -50,6 +76,10 @@ export function createWorker(authenticateGoogle=authenticate){return {
       if(Number(request.headers.get('Content-Length')||0)>limit)return json({error:'請求過大'},413,cors);
       const body=request.method==='POST'?await request.text():'';
       if(body.length>limit)return json({error:'請求過大'},413,cors);
+      if(path==='/widget/pair'||path==='/widget/revoke'){
+        const response=await env.BOARD.get(env.BOARD.idFromName('shared-v1')).fetch('https://internal/internal/widget/'+path.split('/').at(-1),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:{sub:user.sub,email:user.email}})});
+        return json(await response.json(),response.status,cors);
+      }
       const admins=String(env.ADMIN_EMAILS||env.ALLOWED_EMAILS?.split(',')[0]||'').split(',').map(s=>s.trim().toLowerCase());
       let stub=env.BOARD.get(env.BOARD.idFromName('shared-v1')),entry;
       if(!path.startsWith('/seasons')&&!path.startsWith('/push/')&&path!=='/preferences'){
@@ -134,6 +164,7 @@ export class BoardStore {
   async fetch(request){
     const path=new URL(request.url).pathname,user=request.headers.get('X-User'),email=request.headers.get('X-Email');
     if(path.startsWith('/internal/session/'))return new SessionStore(this.ctx.storage,this.env).handle(request);
+    if(path.startsWith('/internal/widget/'))return new WidgetStore(this.ctx.storage,this.env).handle(request);
     if(path.startsWith('/seasons')||path==='/internal/config')return new SeasonRegistry(this.ctx.storage,this.env,collect).handle(request);
     const push=new PushService(this.ctx.storage,this.env);
     const exclusive=fn=>{const task=this.pushQueue.then(fn);this.pushQueue=task.catch(()=>{});return task;};
