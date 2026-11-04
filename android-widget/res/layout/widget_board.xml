@@ -1,15 +1,26 @@
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="8dp" android:background="@drawable/widget_background">
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="24dp" android:gravity="center_vertical">
-        <TextView android:id="@+id/heading" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:gravity="center_vertical" android:fontFamily="serif" android:textStyle="bold" android:textSize="16sp" android:maxLines="1" android:ellipsize="end" android:text="東77" />
-        <TextView android:id="@+id/settings" android:layout_width="32dp" android:layout_height="wrap_content" android:minHeight="24dp" android:gravity="center" android:text="⚙" android:textSize="19sp" android:contentDescription="小工具設定" />
-        <TextView android:id="@+id/refresh" android:layout_width="32dp" android:layout_height="wrap_content" android:minHeight="24dp" android:gravity="center" android:text="↻" android:textSize="23sp" android:contentDescription="重新整理" />
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:paddingLeft="12dp" android:paddingRight="12dp" android:paddingTop="8dp" android:paddingBottom="16dp" android:background="@drawable/widget_background">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="28dp" android:gravity="center_vertical" android:baselineAligned="false">
+        <TextView android:id="@+id/heading" android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="@font/widget_serif_semibold" android:includeFontPadding="false" android:textSize="20sp" android:maxLines="1" android:text="東77" />
+        <TextView android:id="@+id/season" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginLeft="8dp" android:fontFamily="@font/widget_serif" android:includeFontPadding="false" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+        <ImageView android:id="@+id/settings" android:layout_width="28dp" android:layout_height="28dp" android:padding="6dp" android:src="@drawable/ic_settings" android:contentDescription="小工具設定" />
+        <ImageView android:id="@+id/refresh" android:layout_width="28dp" android:layout_height="28dp" android:layout_marginLeft="4dp" android:padding="6dp" android:src="@drawable/ic_refresh" android:background="@drawable/icon_button" android:contentDescription="重新整理" />
     </LinearLayout>
-    <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="14dp" android:textSize="10sp" android:maxLines="1" android:ellipsize="end" />
-    <LinearLayout android:id="@+id/feed" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical" />
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="30dp" android:gravity="center_vertical" android:baselineAligned="false">
-        <TextView android:id="@+id/purchase" style="@style/Count" />
-        <TextView android:id="@+id/shipment" style="@style/Count" />
-        <TextView android:id="@+id/rules" style="@style/Count" />
-        <TextView android:id="@+id/shortage" style="@style/Count" />
+    <LinearLayout android:id="@+id/header_line" android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="6dp" android:layout_marginBottom="3dp" android:background="#D2DDD7" />
+    <LinearLayout android:id="@+id/feed" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical" android:gravity="top" />
+    <LinearLayout android:id="@+id/metrics_line" android:layout_width="match_parent" android:layout_height="1dp" android:background="#D2DDD7" />
+    <LinearLayout android:id="@+id/metrics" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="32dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:gravity="center_vertical" android:baselineAligned="false">
+        <LinearLayout android:id="@+id/purchase" style="@style/Metric"><TextView android:id="@+id/purchase_label" style="@style/MetricLabel" android:text="待下單" /><TextView android:id="@+id/purchase_value" style="@style/MetricValue" /></LinearLayout>
+        <LinearLayout android:id="@+id/metric_sep1" style="@style/MetricSeparator" />
+        <LinearLayout android:id="@+id/shipment" style="@style/Metric"><TextView android:id="@+id/shipment_label" style="@style/MetricLabel" android:text="待出貨" /><TextView android:id="@+id/shipment_value" style="@style/MetricValue" /></LinearLayout>
+        <LinearLayout android:id="@+id/metric_sep2" style="@style/MetricSeparator" />
+        <LinearLayout android:id="@+id/rules" style="@style/Metric"><TextView android:id="@+id/rules_label" style="@style/MetricLabel" android:text="待寄規則" /><TextView android:id="@+id/rules_value" style="@style/MetricValue" /></LinearLayout>
+        <LinearLayout android:id="@+id/metric_sep3" style="@style/MetricSeparator" />
+        <LinearLayout android:id="@+id/shortage" style="@style/Metric"><TextView android:id="@+id/shortage_label" style="@style/MetricLabel" android:text="缺貨" /><TextView android:id="@+id/shortage_value" style="@style/MetricValue" /></LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:id="@+id/footer_line" android:layout_width="match_parent" android:layout_height="1dp" android:background="#D2DDD7" />
+    <LinearLayout android:id="@+id/footer" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="20dp" android:paddingTop="3dp" android:gravity="center_vertical">
+        <TextView android:id="@+id/status_dot" android:layout_width="10dp" android:layout_height="wrap_content" android:text="●" android:textSize="8sp" android:includeFontPadding="false" />
+        <TextView android:id="@+id/status" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:fontFamily="@font/widget_serif" android:includeFontPadding="false" android:textSize="10sp" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/view_all" android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="@font/widget_serif" android:includeFontPadding="false" android:textSize="10sp" android:text="查看全部 ›" android:maxLines="1" />
     </LinearLayout>
 </LinearLayout>

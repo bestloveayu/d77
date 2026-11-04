@@ -24,19 +24,20 @@ java -cp <temporary-output> LayoutMetricsTest
 
 - Add the widget, enter the website's one-use 32-hex pairing code, select appearance,
   then Complete. Settings are per-widget; pairing/cache is shared by this app's widgets.
-- Default 4x2, vertical resize only. Minimum-height breakpoints 190/270 dp show
-  1/3/5 feed rows for small/medium/large; four footer counts always remain present.
+- Default 4x2, vertical resize only. Available height and font scale determine
+  up to six feed rows; larger layouts include a subtitle and timestamp. Tiny or
+  large-font layouts prioritize footer counts and may show fewer/no feed rows.
   Feed alternates generic to-dos/activity, falling back to whichever is available.
 - System/day/night appearance, forest green/offwhite and platform serif font.
   Android may substitute a CJK serif font depending on installed fonts.
 - A persisted network-constrained JobScheduler job requests updates every 30 minutes
-  (Android may defer). Refresh taps are debounced for 30 seconds per app process.
-  A single executor serializes pairing, refresh and logout; receiver work uses goAsync.
+  (Android may defer). Refresh taps schedule a one-off job and are debounced for 30
+  seconds per app process. A single executor serializes pairing, refresh and logout.
 - Token and full feed cache are AES/GCM encrypted with an Android Keystore key.
   Backups and cleartext traffic are disabled. Pairing input is not saved/autofilled;
   no credentials or response bodies are logged. HTTP redirects are rejected,
   connections have 12-second connect/read timeouts and responses have a 256 KiB cap.
-- Network errors retain existing counts and mark cached state. HTTP 401 clears all
+- Network errors retain existing counts and mark cached state. HTTP 401/403 clears all
   credentials/cache and cancels polling. Local logout clears immediately within the
   serialized work queue; remote revocation failure is explicitly reported.
 - Internal PendingIntents are immutable and explicit. Browser intents are issued

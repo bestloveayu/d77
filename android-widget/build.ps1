@@ -1,4 +1,4 @@
-param([string]$SdkRoot = "", [string]$JavaHome = "")
+param([string]$SdkRoot = "", [string]$JavaHome = "", [string]$Version = '0.2.0', [int]$VersionCode = 2)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 if (!$SdkRoot) { $SdkRoot = Join-Path (Split-Path $root) '.android-tools/sdk' }
@@ -12,7 +12,7 @@ New-Item -ItemType Directory -Force -Path $build, "$build/generated", "$build/cl
 function Check { if ($LASTEXITCODE -ne 0) { throw "Build command failed: $LASTEXITCODE" } }
 & "$tools/aapt2.exe" compile --dir "$root/res" -o "$build/resources.zip"
 Check
-& "$tools/aapt2.exe" link -o "$build/base.apk" -I $platform --manifest "$root/AndroidManifest.xml" --java "$build/generated" --min-sdk-version 26 --target-sdk-version 35 --version-code 1 --version-name '0.1.0' "$build/resources.zip"
+& "$tools/aapt2.exe" link -o "$build/base.apk" -I $platform --manifest "$root/AndroidManifest.xml" --java "$build/generated" --min-sdk-version 26 --target-sdk-version 35 --version-code $VersionCode --version-name $Version "$build/resources.zip"
 Check
 $sources = @((Get-ChildItem "$root/src" -Recurse -Filter '*.java').FullName) + @((Get-ChildItem "$build/generated" -Recurse -Filter '*.java').FullName)
 & "$JavaHome/bin/javac.exe" -encoding UTF-8 --release 8 -classpath $platform -d "$build/classes" @sources
@@ -32,12 +32,12 @@ if (!(Test-Path -LiteralPath $key)) {
   & "$JavaHome/bin/keytool.exe" -genkeypair -keystore $key -storepass android -keypass android -alias widget-test -keyalg RSA -keysize 3072 -validity 3650 -dname 'CN=D77 Widget Local Test,O=D77,C=TW'
   Check
 }
-& "$tools/apksigner.bat" sign --ks $key --ks-key-alias widget-test --ks-pass pass:android --key-pass pass:android --out "$root/dist/東77桌面小工具_0.1.0_測試版.apk" "$build/aligned.apk"
+& "$tools/apksigner.bat" sign --ks $key --ks-key-alias widget-test --ks-pass pass:android --key-pass pass:android --out "$root/dist/東77桌面小工具_${Version}_測試版.apk" "$build/aligned.apk"
 Check
-& "$tools/apksigner.bat" verify --verbose "$root/dist/東77桌面小工具_0.1.0_測試版.apk"
+& "$tools/apksigner.bat" verify --verbose "$root/dist/東77桌面小工具_${Version}_測試版.apk"
 Check
 & "$JavaHome/bin/javac.exe" -encoding UTF-8 --release 8 -d "$build/tests" "$root/src/tw/d77/widget/LayoutMetrics.java" "$root/tests/LayoutMetricsTest.java"
 Check
 & "$JavaHome/bin/java.exe" -cp "$build/tests" LayoutMetricsTest
 Check
-Get-FileHash -Algorithm SHA256 -LiteralPath "$root/dist/東77桌面小工具_0.1.0_測試版.apk"
+Get-FileHash -Algorithm SHA256 -LiteralPath "$root/dist/東77桌面小工具_${Version}_測試版.apk"
