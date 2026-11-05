@@ -39,7 +39,7 @@ export function createWorker(authenticateGoogle=authenticate){return {
         const user=await restored.json();if(!restored.ok||path==='/widget/logout')return json(user,restored.status,cors);
         const target=await seasonTarget(env,null,user.sub);if(target.error)return json({error:'尚未設定預設季別'},503,cors);
         const headers={'X-User':user.sub,'X-Email':user.email,'X-Source-Config':JSON.stringify(target.entry.config),'X-Notify':target.entry.isDefault?'1':'0'};
-        const response=await target.stub.fetch('https://internal/snapshot',{headers});
+        const response=await target.stub.fetch('https://internal/snapshot',{headers:{...headers,'X-Widget-Cached':'1'}});
         if(!response.ok)return json({error:'雲端資料暫時無法取得'},503,cors);
         const data=await response.json();
         const eventsResponse=await target.stub.fetch('https://internal/notifications',{headers});
@@ -186,7 +186,15 @@ export class BoardStore {
     }
     if(path==='/snapshot'){
       const current=await this.snapshot();
-      if(!current||Date.now()-Date.parse(current.updatedAt)>300000)await this.update(sourceConfig,notify);
+      if(!current||Date.now()-Date.parse(current.updatedAt)>300000){
+        if(request.headers.get('X-Widget-Cached')==='1'&&this.ctx.waitUntil){
+          // A widget must not hold its mobile connection open while Google is refreshed.
+          this.ctx.waitUntil(this.update(sourceConfig,notify));
+          const error=await this.ctx.storage.get('error');
+          return json({snapshot:current,error:error||null,stale:true,refreshing:true});
+        }
+        await this.update(sourceConfig,notify);
+      }
       const snapshot=await this.snapshot(),error=await this.ctx.storage.get('error');
       return json({snapshot:snapshot||null,error:error||null,viewer:email,stale:!!error||!snapshot||Date.now()-Date.parse(snapshot.updatedAt)>600000});
     }
