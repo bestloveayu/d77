@@ -51,8 +51,8 @@ public final class BoardWidget extends AppWidgetProvider {
         r.setImageViewResource(R.id.settings,dark?R.drawable.ic_settings_dark:R.drawable.ic_settings);
         r.setImageViewResource(R.id.refresh,dark?R.drawable.ic_refresh_dark:R.drawable.ic_refresh);
         r.setInt(R.id.refresh,"setBackgroundResource",dark?R.drawable.icon_button_dark:R.drawable.icon_button);
-        r.setTextViewTextSize(R.id.heading,android.util.TypedValue.COMPLEX_UNIT_SP,large?26:medium?23:20);
-        r.setTextViewTextSize(R.id.season,android.util.TypedValue.COMPLEX_UNIT_SP,large?15:12);
+        r.setTextViewTextSize(R.id.heading,android.util.TypedValue.COMPLEX_UNIT_SP,26);
+        r.setTextViewTextSize(R.id.season,android.util.TypedValue.COMPLEX_UNIT_SP,15);
         r.setTextColor(R.id.status, muted);
         r.setTextViewText(R.id.heading, "東77");
         r.setTextViewText(R.id.season,data==null?"":clean(data.optString("season"),24));
@@ -64,34 +64,11 @@ public final class BoardWidget extends AppWidgetProvider {
         r.setOnClickPendingIntent(R.id.heading, login ? setup : open(c,"overview"));
         r.setOnClickPendingIntent(R.id.view_all,login?setup:open(c,"overview"));
         r.setOnClickPendingIntent(R.id.refresh, login ? setup : PendingIntent.getBroadcast(c, 7, new Intent(c, BoardWidget.class).setAction(REFRESH), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
-        r.removeAllViews(R.id.feed);
-        int rows = LayoutMetrics.rows(height,c.getResources().getConfiguration().fontScale);
-        JSONArray todos = data == null ? null : data.optJSONArray("todos"), events = data == null ? null : data.optJSONArray("events");
-        int t = 0, e = 0;
-        for (int n = 0; n < rows; n++) {
-            boolean todo = n % 2 == 0;
-            JSONObject item = todo && todos != null ? todos.optJSONObject(t++) : !todo && events != null ? events.optJSONObject(e++) : null;
-            if (item == null && todos != null && t < todos.length()) { item = todos.optJSONObject(t++); todo = true; }
-            if (item == null && events != null && e < events.length()) { item = events.optJSONObject(e++); todo = false; }
-            if (item == null && n > 0) break;
-            RemoteViews row = new RemoteViews(c.getPackageName(), R.layout.widget_row);
-            int padding=Math.round((large?10:medium?8:4)*c.getResources().getDisplayMetrics().density);
-            row.setViewPadding(R.id.row_content,0,padding,0,padding);
-            String text = login ? "連結 D77 帳戶" : item == null ? "目前沒有新待辦" : clean(item.optString("title"),60);
-            row.setTextViewText(R.id.row_title, text); row.setTextColor(R.id.row_title, fg);
-            row.setTextColor(R.id.row_body, muted);
-            row.setTextColor(R.id.row_time,muted);
-            row.setInt(R.id.row_line,"setBackgroundColor",line);
-            row.setTextViewTextSize(R.id.row_title,android.util.TypedValue.COMPLEX_UNIT_SP,large?18:medium?16:14);
-            row.setTextViewTextSize(R.id.row_body,android.util.TypedValue.COMPLEX_UNIT_SP,large?13:12);
-            row.setViewVisibility(R.id.row_body,medium&&item!=null?android.view.View.VISIBLE:android.view.View.GONE);
-            row.setTextViewText(R.id.row_body,item==null?"":clean(item.optString("body"),100));
-            row.setTextViewText(R.id.row_time,item==null||item.isNull("time")?"":shortTime(item.optString("time")));
-            String icon=text.contains("寄")?"ic_mail":text.contains("出貨")?"ic_package":text.contains("缺貨")?"ic_box":"ic_task";
-            row.setImageViewResource(R.id.row_icon,c.getResources().getIdentifier(icon+(dark?"_dark":""),"drawable",c.getPackageName()));
-            row.setOnClickPendingIntent(R.id.row, login ? setup : open(c, item == null ? "overview" : item.optString("page")));
-            r.addView(R.id.feed,row);
-        }
+        Intent feed=new Intent(c,FeedService.class).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,id);
+        feed.setData(android.net.Uri.parse("d77-widget://feed/"+id+"/"+(dark?"night":"day")));
+        r.setRemoteAdapter(R.id.feed,feed);
+        Intent target=new Intent(c,OpenActivity.class);
+        r.setPendingIntentTemplate(R.id.feed,PendingIntent.getActivity(c,770000+id,target,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_MUTABLE));
         String[] keys = {"awaitingPurchase","awaitingShipment","awaitingRules","shortage"};
         String[] labels = {"待下單","待出貨","待寄規則","缺貨"};
         int[] views = {R.id.purchase,R.id.shipment,R.id.rules,R.id.shortage};
@@ -111,6 +88,7 @@ public final class BoardWidget extends AppWidgetProvider {
             r.setOnClickPendingIntent(views[n],login ? setup : open(c,n == 3 ? "inventory" : "orders",new String[]{"pending","registration","rules","shortage"}[n]));
         }
         m.updateAppWidget(id,r);
+        m.notifyAppWidgetViewDataChanged(id,R.id.feed);
     }
     private static String clean(String s, int max) { s = s.replaceAll("[\\p{Cntrl}]", " "); return s.substring(0,Math.min(s.length(),max)); }
     private static String formattedTime(String value) {

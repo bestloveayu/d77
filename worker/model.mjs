@@ -1,5 +1,7 @@
 import {classifyFollowUp,needsAttention} from '../public/order-followup.js';
 import {parseTimestamp as stockTime} from '../public/timestamp.js';
+import {confirmedCatalog,confirmedName} from './confirmed-catalog.mjs';
+import {widgetFacts} from './widget-facts.mjs';
 export const norm = v => String(v ?? '').normalize('NFKC').replace(/\s+/g, '').toLowerCase();
 function exemption(value){
   const text=norm(value);if(['true','1','是','不需寄送','不需寄送中文規則'].includes(text))return true;
@@ -48,8 +50,10 @@ export function safeUrl(value) {
 }
 export function resolver(items, aliases = {}) {
   return value => {
-    const aliased = aliases[String(value)] ?? value;
-    const matches = items.filter(i => [i.name, i.foreignName].filter(Boolean).some(k => norm(k) === norm(aliased)));
+    const targets=[...new Set(Object.entries(aliases).filter(([k])=>norm(k)===norm(value)).map(([,v])=>v))];
+    if(targets.length>1&&new Set(targets.map(norm)).size>1)return null;
+    const aliased = targets[0] ?? value;
+    const matches = items.filter(i => [i.name, i.foreignName,...(i.sourceNames||[])].filter(Boolean).some(k => norm(k) === norm(aliased)));
     return matches.length === 1 ? matches[0] : null;
   };
 }
@@ -83,7 +87,7 @@ export async function parseResponses(rows, config, items) {
   const wishCol = normalized.findIndex(x => x.startsWith('許願區'));
   const storeCol = headers.findIndex(x => /取貨.*(?:店|門市)|門市名稱/.test(x));
   const ignored = new Set([nameCol,emailCol,phoneCol,nicknameCol,timeCol,wishCol,storeCol]);
-  const resolve = resolver(items, config.aliases), sourceResolve=resolver(items);
+  const resolve = resolver(items, config.aliases), sourceResolve=resolver(items.map(i=>({...i,name:i.sourceNames?.[0]||i.name})));
   const columns = headers.flatMap((v,i) => {
     if (ignored.has(i)) return [];
     const override = config.productColumns?.[String(i)];
@@ -165,8 +169,12 @@ async function resource(line, order, config, kind) {
   return {key:await pyDigest(identity),fingerprint:await pyDigest(kind==='mail'?identity:[origin,line.originalName,line.quantity])};
 }
 export async function compose(input, config, now = new Date().toISOString()) {
-  const items = catalog(input.catalog), resolve=resolver(items,config.aliases);
+  const money=ledger(input.ledger,config.season);
+  const confirmed=confirmedCatalog(catalog(input.catalog),config,[...money.stock.keys(),...money.stockUpdates.keys(),...money.invalidStockQuantities]);
+  config=confirmed.config;
+  const items = confirmed.items, resolve=resolver(items,config.aliases);
   const orders = await parseResponses(input.responses,config,items);
+  for(const order of orders)for(const line of order.lines)line.name=confirmedName(line.name,config);
   const team=input.team, documents=input.documents;
   if (!Array.isArray(team.resources)||!Array.isArray(team.operations)||!Array.isArray(documents.documents)) throw new Error('協作資料格式錯誤');
   if(team.teamId!==documents.teamId) throw new Error('協作團隊識別碼不一致');
@@ -174,7 +182,7 @@ export async function compose(input, config, now = new Date().toISOString()) {
     const b=doc.body;
     if(!b||!Array.isArray(b.items)) throw new Error('手動訂單資料不完整');
     orders.push({id:'manual-'+doc.id,manualId:doc.id,manual:true,name:b.name,email:b.email||'',phone:b.phone||'',nickname:'',time:b.createdAt||'',sourceSheet:'',
-      lines:b.items.map(i=>({name:resolve(i.name)?.name||i.name,originalName:i.name,quantity:i.quantity,price:i.unitPrice,localLineId:i.localLineId,mapped:!!resolve(i.name),purchased:null,shipped:null,mailed:null})),issues:[]});
+      lines:b.items.map(i=>({name:resolve(i.name)?.name||confirmedName(i.name,config),originalName:i.name,quantity:i.quantity,price:i.unitPrice,localLineId:i.localLineId,mapped:!!resolve(i.name),purchased:null,shipped:null,mailed:null})),issues:[]});
   }
   const resourceIndex=new Map();
   for (const r of team.resources.filter(r=>r.season===config.season)) {if(resourceIndex.has(r.key)) throw new Error('重複協作資源');resourceIndex.set(r.key,r);}
@@ -197,7 +205,7 @@ export async function compose(input, config, now = new Date().toISOString()) {
     }
     // No record is unknown, not a claim that an offline historical order never shipped.
   }
-  const money=ledger(input.ledger,config.season), files=input.rules||[];
+  const files=input.rules||[];
   const identify=name=>{
     const usedSuffix=/[（(]二手[）)]\s*$/;
     const used=usedSuffix.test(name),base=name.replace(usedSuffix,'').trim();
@@ -247,7 +255,7 @@ export async function compose(input, config, now = new Date().toISOString()) {
     const known=ordered!==null&&shipped!==null;
     if(!validShipment||usedShipped===null)money.issues.push(item.name+' 帳本出貨數量待核對');
     const inv=inventory.get(item),newStock=inv.newInvalid?null:inv.new,usedStock=inv.usedInvalid?null:inv.used,stockUpdate=inv.update;
-    const rules=files.filter(f=>norm(f.name.replace(/_(?:中文規則書?|中文卡牌|卡表).*$/,''))===norm(item.name)).map(f=>({name:f.name,url:safeUrl(f.webViewLink||`https://drive.google.com/file/d/${encodeURIComponent(f.id)}/view`),cards:/中文卡牌|卡表/.test(f.name)}));
+    const rules=files.filter(f=>norm(f.name.replace(/_(?:中文規則書?|中文卡牌|卡表).*$/,''))===norm(item.name)).map(f=>({name:f.name,url:safeUrl(f.webViewLink||`https://drive.google.com/file/d/${encodeURIComponent(f.id)}/view`),cards:/中文卡牌|卡表/.test(f.name),modifiedTime:f.modifiedTime||''}));
     if(item.ruleUrl&&!rules.some(f=>f.url===item.ruleUrl))rules.push({name:'規則檔',url:item.ruleUrl,cards:false});
     const outstanding=known?Math.max(0,ordered-shipped):null;
     const usedOutstanding=item.usedOrdered!==null&&usedShipped!==null?Math.max(0,item.usedOrdered-usedShipped):null;
@@ -268,7 +276,7 @@ export async function compose(input, config, now = new Date().toISOString()) {
     // Do not expose contact details to the mobile app.
     delete order.email;order.phoneSuffix=order.phone?.slice(-3)||'';delete order.phone;
   }
-  return {season:config.season,updatedAt:now,followUpVersion:1,inventoryVersion:3,stockCalculationVersion:1,unmatchedShipments,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
+  return {season:config.season,updatedAt:now,widgetFactsVersion:1,followUpVersion:1,inventoryVersion:3,stockCalculationVersion:1,unmatchedShipments,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
     ledgerDetailVersion:1,transactions:money.transactions,issues:money.issues,operations:team.operations.filter(o=>o.season===config.season).map(o=>({id:o.id,actor:o.actor,kind:o.kind,status:o.status,time:o.updatedAt||o.createdAt})),
     sourceStatus:{catalog:'ok',responses:'ok',ledger:'ok',team:'ok',documents:'ok',rules:'ok'},
     summary:{orders:orders.length,attention:orders.filter(needsAttention).length,registrationPending:orders.filter(o=>o.followUp.kind==='registration').length,rulesPending:orders.filter(o=>o.followUp.kind==='rules').length,shortages:products.filter(p=>p.shortage>0||p.usedShortage>0).length,unknownStock:products.filter(p=>p.coverage==='unknown').length,
@@ -291,10 +299,24 @@ export async function changes(previous, next) {
   for(const p of next.products){const old=oldProducts.get(p.name);if(!old)continue;
     if(previous.inventoryVersion===3&&previous.stockCalculationVersion===1&&p.shortage>0&&(p.shortage!==old.shortage||!!p.shortageEstimate!==!!old.shortageEstimate))
       await add('shortage',[p.name,p.shortage,!!p.shortageEstimate,next.updatedAt],p.shortageEstimate?'庫存缺口估算提醒':'庫存不足提醒',p.shortageEstimate?p.name+' 規劃缺口估算 '+p.shortage+' 盒（非確認剩餘需求，出貨資料待核對）':p.name+' 尚缺 '+p.shortage+' 盒',{page:'inventory',name:p.name});
-    if(!old.rules.length&&p.rules.length)await add('rules',p.name+await digest(p.rules),'中文規則已備齊',p.name,{page:'rules',name:p.name});
+    const ruleSignature=rules=>JSON.stringify(rules.map(r=>[r.name,r.url,r.cards,...(previous.widgetFactsVersion===1?[r.modifiedTime||'']:[])]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
+    if(p.rules.length&&ruleSignature(old.rules)!==ruleSignature(p.rules))await add('rules',p.name+await digest(p.rules),'中文規則已備齊',p.name,{page:'rules',name:p.name});
+  }
+  // Establish a baseline for older snapshots which did not carry transaction detail.
+  if(Array.isArray(previous.transactions)){
+    const oldTransactions=new Map(previous.transactions.map(tx=>[tx.id,JSON.stringify(tx)]));
+    for(const tx of next.transactions||[])if(Number.isInteger(tx.quantity)&&tx.quantity!==0&&oldTransactions.get(tx.id)!==JSON.stringify(tx))
+      await add('stock',[tx.id,await digest(tx)],'庫存異動',tx.name,{page:'inventory',transactionId:tx.id});
+  }
+  for(const order of next.orders){
+    const old=oldOrders.get(order.id);if(!old)continue;
+    for(const [field,type,title] of [['purchased','purchase','下單已確認'],['shipped','shipment','出貨已登記'],['mailed','mail','規則已寄送']]){
+      const increased=order.lines.some(line=>{const before=old.lines.find(l=>l.originalName===line.originalName&&l.name===line.name);return before&&line[field]>0&&line[field]>(before[field]??0);});
+      if(increased)await add(type,[order.id,next.updatedAt],title,'雲端已確認',{page:'orders',id:order.id});
+    }
   }
   const oldOps=new Map(previous.operations.map(o=>[o.id,o]));
   for(const o of next.operations)if(o.status==='succeeded'&&oldOps.get(o.id)?.status!=='succeeded')
     await add('activity',o.id,(o.actor||'成員')+'完成'+({shipment:'出貨登記',purchase:'下單',mail:'規則寄送'}[o.kind]||'協作操作'),'雲端已確認',{page:'notifications'},o.time);
-  return events;
+  return events.map(event=>{const facts=widgetFacts(next,event);return facts?{...event,widgetFacts:facts}:event;});
 }

@@ -1,4 +1,6 @@
 import {awaitingPurchase,classifyFollowUp} from '../public/order-followup.js';
+import {widgetFacts,orderFacts} from './widget-facts.mjs';
+import {parseTimestamp} from '../public/timestamp.js';
 const hex=b=>Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
 const hash=async s=>hex(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))));
 const random=n=>hex(crypto.getRandomValues(new Uint8Array(n)));
@@ -64,7 +66,7 @@ export class WidgetStore {
     }catch(e){return Response.json({error:e.status?e.message:'小工具服務暫時無法使用'},{status:e.status||503});}
   }
 }
-const types={order:['新增訂單','orders'],change:['訂單資料已更新','orders'],activity:['協作操作已更新','orders'],shortage:['庫存狀態已更新','inventory'],rules:['中文規則已更新','rules'],registration:['訂單待出貨登記','orders'],'rules-pending':['訂單待寄規則','orders']};
+const types={order:['新增訂單','orders'],change:['訂單資料已更新','orders'],activity:['協作操作已更新','orders'],shortage:['庫存狀態已更新','inventory'],rules:['中文規則已更新','rules'],stock:['庫存異動','inventory'],purchase:['下單已確認','orders'],shipment:['出貨已登記','orders'],mail:['規則已寄送','orders'],registration:['訂單待出貨登記','orders'],'rules-pending':['訂單待寄規則','orders']};
 export function widgetSummary(snapshot,events=[],stale=false,error=null){
   const counts=snapshot?{
     awaitingPurchase:snapshot.orders.filter(awaitingPurchase).length,
@@ -74,6 +76,13 @@ export function widgetSummary(snapshot,events=[],stale=false,error=null){
   }:{awaitingPurchase:null,awaitingShipment:null,awaitingRules:null,shortage:null};
   const definitions=[['awaitingShipment','待出貨登記','orders','筆訂單等待出貨登記'],['awaitingRules','待寄中文規則','orders','筆訂單等待寄送規則'],['awaitingPurchase','待下單','orders','筆訂單尚無已確認下單量'],['shortage','缺貨待補','inventory','款品項庫存不足']];
   return {season:snapshot?.season||'',updatedAt:snapshot?.updatedAt||null,stale:!!stale,error:error?'雲端更新未完成，顯示上次資料':null,counts,
-    todos:definitions.filter(([key])=>counts[key]>0).map(([key,title,page,unit])=>({title,body:counts[key]+' '+unit,page,time:null})),
-    events:events.filter(e=>types[e.type]).slice(0,8).map(e=>({title:types[e.type][0],body:'點選查看雲端最新資料',page:types[e.type][1],time:e.time}))};
+    todos:definitions.filter(([key])=>counts[key]>0).flatMap(([key,title,page])=>{
+      const matching=key==='shortage'?snapshot.products.filter(p=>p.shortage>0||p.usedShortage>0):snapshot.orders.filter(o=>key==='awaitingPurchase'?awaitingPurchase(o):(o.followUp||classifyFollowUp(o)).kind===(key==='awaitingShipment'?'registration':'rules'));
+      matching.sort((a,b)=>key==='shortage'?(b.shortage||0)+(b.usedShortage||0)-(a.shortage||0)-(a.usedShortage||0):(parseTimestamp(b.time)||0)-(parseTimestamp(a.time)||0));
+      return matching.slice(0,8).map(o=>({title:o.name+' · '+title,body:key==='shortage'?'全新缺 '+(o.shortage??'?')+' 盒；二手缺 '+(o.usedShortage??'?')+' 盒；全新庫存 '+(o.stock??'?')+' 盒':orderFacts(o),page,time:null}));
+    }),
+    events:events.filter(e=>types[e.type]).slice(0,32).map(e=>{
+      const facts=e.widgetFacts||widgetFacts(snapshot,e);
+      return {title:String(facts?.title||types[e.type][0]).slice(0,100),body:String(facts?(e.widgetFacts?'':'目前資料：')+facts.body:'此筆舊動態沒有詳細資料').slice(0,300),page:types[e.type][1],time:e.time};
+    })};
 }

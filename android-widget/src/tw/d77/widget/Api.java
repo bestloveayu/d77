@@ -11,7 +11,7 @@ final class Api {
         if (!path.equals("/widget/redeem") && !path.equals("/widget/data") && !path.equals("/widget/logout")) throw new IOException("Invalid endpoint");
         if (token != null && !token.matches("d77w_[0-9a-fA-F]{64}")) throw new IOException("Invalid credential");
         HttpsURLConnection c = (HttpsURLConnection) new URL("https://dong77-cloud-board-api.dong77-cloud-board.workers.dev" + path).openConnection();
-        c.setInstanceFollowRedirects(false); c.setConnectTimeout(12000); c.setReadTimeout(12000);
+        c.setInstanceFollowRedirects(false); c.setConnectTimeout(12000); c.setReadTimeout(path.equals("/widget/data")?90000:20000);
         c.setUseCaches(false); c.setRequestProperty("Accept", "application/json");
         if (token != null) c.setRequestProperty("Authorization", "Bearer " + token);
         c.setRequestMethod(body == null ? "GET" : "POST");

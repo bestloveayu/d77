@@ -1,4 +1,4 @@
-param([string]$SdkRoot = "", [string]$JavaHome = "", [string]$Version = '0.2.0', [int]$VersionCode = 2)
+param([string]$SdkRoot = "", [string]$JavaHome = "", [string]$Version = '0.3.0', [int]$VersionCode = 3)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 if (!$SdkRoot) { $SdkRoot = Join-Path (Split-Path $root) '.android-tools/sdk' }

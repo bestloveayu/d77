@@ -1,6 +1,6 @@
 export function mountWidgetSettings({form,api,isCurrent,demo}){
   const section=document.createElement('section');section.className='setting-section';
-  section.innerHTML='<h3>Android 桌面小工具</h3><p><a href="./downloads/d77-widget-0.2.0-test.apk" download>下載 Android 測試版 APK（0.2.0）</a></p><div class="section-actions"><button type="button" data-widget-pair>產生裝置配對碼</button><button type="button" data-widget-revoke>撤銷所有小工具裝置</button></div><div data-widget-status role="status" aria-live="polite"></div>';
+  section.innerHTML='<h3>Android 桌面小工具</h3><p><a href="./downloads/d77-widget-0.3.0-test.apk" download>下載 Android 測試版 APK（0.3.0）</a></p><div class="section-actions"><button type="button" data-widget-pair>產生裝置配對碼</button><button type="button" data-widget-revoke>撤銷所有小工具裝置</button></div><div data-widget-status role="status" aria-live="polite"></div>';
   form.before(section);
   const status=section.querySelector('[data-widget-status]');let busy=false,expiryTimer;
   const action=async kind=>{

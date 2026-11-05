@@ -13,5 +13,6 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/board_widget" />
         </receiver>
         <service android:name=".RefreshJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
+        <service android:name=".FeedService" android:permission="android.permission.BIND_REMOTEVIEWS" android:exported="false" />
     </application>
 </manifest>

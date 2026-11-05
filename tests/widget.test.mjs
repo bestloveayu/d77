@@ -38,12 +38,12 @@ test('invalid codes are rate limited and web session tokens are rejected',async(
   await assert.rejects(()=>f.store.redeem('0'.repeat(32),'ip'),{status:429});
   await assert.rejects(()=>f.store.restore('d77s_'+'0'.repeat(64)));
 });
-test('summary is minimal and retains unknown/offline state',()=>{
+test('summary includes requested names but excludes contacts and retains unknown/offline state',()=>{
   const order={name:'PRIVATE',email:'private@example.com',lines:[{quantity:2,purchased:0,shipped:0}],progress:{purchased:0}};
   const snapshot={season:'2026秋',updatedAt:'2026-11-05T00:00:00Z',orders:[order],products:[{shortage:2}]};
   const out=widgetSummary(snapshot,[{id:'e',type:'activity',title:'PRIVATE',body:'EMAIL',time:'2026-11-05T00:00:00Z'}],true,'更新失敗');
   assert.equal(out.counts.awaitingPurchase,1);assert.equal(out.counts.shortage,1);
-  assert.equal(out.stale,true);assert.ok(!JSON.stringify(out).includes('PRIVATE'));assert.ok(!JSON.stringify(out).includes('EMAIL'));
+  assert.equal(out.stale,true);assert.ok(JSON.stringify(out).includes('PRIVATE'));assert.ok(!JSON.stringify(out).includes('EMAIL'));assert.ok(!JSON.stringify(out).includes('private@example.com'));
   assert.equal(widgetSummary(null,[],true,'離線').counts.awaitingPurchase,null);
 });
 test('native credential cannot authorize website or source-management routes',async()=>{
