@@ -1,4 +1,4 @@
-param([string]$SdkRoot = "", [string]$JavaHome = "", [string]$Version = '0.3.1', [int]$VersionCode = 4)
+param([string]$SdkRoot = "", [string]$JavaHome = "", [string]$Version = '0.3.2', [int]$VersionCode = 5)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 if (!$SdkRoot) { $SdkRoot = Join-Path (Split-Path $root) '.android-tools/sdk' }
@@ -39,5 +39,9 @@ Check
 & "$JavaHome/bin/javac.exe" -encoding UTF-8 --release 8 -d "$build/tests" "$root/src/tw/d77/widget/LayoutMetrics.java" "$root/tests/LayoutMetricsTest.java"
 Check
 & "$JavaHome/bin/java.exe" -cp "$build/tests" LayoutMetricsTest
+Check
+& "$JavaHome/bin/javac.exe" -encoding UTF-8 --release 8 -d "$build/tests" "$root/src/tw/d77/widget/FeedOrder.java" "$root/tests/FeedOrderTest.java"
+Check
+& "$JavaHome/bin/java.exe" -cp "$build/tests" FeedOrderTest
 Check
 Get-FileHash -Algorithm SHA256 -LiteralPath "$root/dist/東77桌面小工具_${Version}_測試版.apk"

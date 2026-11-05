@@ -1,6 +1,6 @@
 import {demoSnapshot,demoEvents} from './demo.js';
 import {showSeasonSettings} from './season-settings.js';
-import {mountWidgetSettings} from './widget-settings.js?v=20261105.4';
+import {mountWidgetSettings} from './widget-settings.js?v=20261106.1';
 import {SOURCE_DEFAULTS} from './season-config.js';
 import {stageLabel,orderProgressLabels} from './order-status.js';
 import {parseTimestamp} from './timestamp.js?v=20261102.3';

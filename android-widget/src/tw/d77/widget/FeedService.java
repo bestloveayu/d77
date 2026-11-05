@@ -24,11 +24,9 @@ public final class FeedService extends RemoteViewsService {
             JSONObject data=paired?state.optJSONObject("data"):null;
             ArrayList<JSONObject> next=new ArrayList<>();
             JSONArray todos=data==null?null:data.optJSONArray("todos"),events=data==null?null:data.optJSONArray("events");
-            int t=0,e=0,tc=todos==null?0:todos.length(),ec=events==null?0:events.length();
-            while((t<tc||e<ec)&&next.size()<64){
-                if(t<tc){JSONObject item=todos.optJSONObject(t++);if(item!=null)next.add(item);}
-                if(e<ec){JSONObject item=events.optJSONObject(e++);if(item!=null)next.add(item);}
-            }
+            List<JSONObject> eventRows=rows(events),todoRows=rows(todos);
+            next.addAll(FeedOrder.eventsFirst(eventRows,todoRows,item->{try{return java.time.Instant.parse(item.optString("time")).toEpochMilli();}catch(Exception ignored){return Long.MIN_VALUE;}}));
+            if(next.size()>64)next.subList(64,next.size()).clear();
             if(next.isEmpty())try{next.add(new JSONObject().put("title",paired?"目前沒有新待辦":"請先配對小工具").put("body",paired?"同步後會顯示最新資訊":"開啟東77小工具 App 連結帳戶"));}catch(JSONException ignored){}
             items=next;
         }
@@ -55,6 +53,11 @@ public final class FeedService extends RemoteViewsService {
         public long getItemId(int position){return position;}
         public boolean hasStableIds(){return false;}
         public void onDestroy(){items=Collections.emptyList();}
+        private static List<JSONObject> rows(JSONArray values){
+            List<JSONObject> result=new ArrayList<>();
+            if(values!=null)for(int i=0;i<Math.min(64,values.length());i++){JSONObject value=values.optJSONObject(i);if(value!=null)result.add(value);}
+            return result;
+        }
         private static String clean(String text,int max){text=text.replaceAll("[\\p{Cntrl}]"," ");return text.substring(0,Math.min(text.length(),max));}
         private static String time(String text){try{return java.time.Instant.parse(text).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));}catch(Exception ignored){return "";}}
     }
