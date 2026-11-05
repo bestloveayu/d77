@@ -23,14 +23,20 @@ final class Sync {
     }
     static void requestRefresh(Context c) {
         if(new Vault(c).read().optString("token").isEmpty())return;
-        c.getSystemService(JobScheduler.class).schedule(new JobInfo.Builder(JOB+1,new ComponentName(c,RefreshJob.class)).setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).build());
+        RefreshStatus.mark(c,"queued");
+        try{
+            int result=c.getSystemService(JobScheduler.class).schedule(new JobInfo.Builder(JOB+1,new ComponentName(c,RefreshJob.class)).setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY).setOverrideDeadline(0).build());
+            if(result!=JobScheduler.RESULT_SUCCESS)RefreshStatus.mark(c,"schedule-error");
+        }catch(RuntimeException e){RefreshStatus.mark(c,"schedule-error");}
+        BoardWidget.renderAll(c);
     }
-    static void clear(Context c) { new Vault(c).clear(); c.getSystemService(JobScheduler.class).cancel(JOB); c.getSystemService(JobScheduler.class).cancel(JOB+1); }
+    static void clear(Context c) { new Vault(c).clear(); RefreshStatus.clear(c);c.getSystemService(JobScheduler.class).cancel(JOB); c.getSystemService(JobScheduler.class).cancel(JOB+1); }
     static boolean validCount(Object n) { return n instanceof Number && ((Number)n).doubleValue()>=0 && ((Number)n).doubleValue()<=1000000 && ((Number)n).doubleValue()==((Number)n).longValue(); }
     static void refresh(Context c) {
         Vault v = new Vault(c); JSONObject s = v.read(); String token = s.optString("token");
         if (Session.expired(s)) { clear(c); BoardWidget.renderAll(c); return; }
         if (token.isEmpty()) { BoardWidget.renderAll(c); return; }
+        RefreshStatus.mark(c,"running");BoardWidget.renderAll(c);
         try {
             JSONObject data = Api.request("/widget/data", token, null);
             if (!(data.opt("counts") instanceof JSONObject)) throw new java.io.IOException("Invalid data");
@@ -42,8 +48,9 @@ final class Sync {
             if(!available&&s.optJSONObject("data")!=null){s.put("failed",true);}
             else {s.put("data", data);s.put("failed", false);}
             v.write(s);
+            RefreshStatus.mark(c,!available||data.optBoolean("stale")||(!data.isNull("error")&&!data.optString("error").isEmpty())?"cloud":"success");
         } catch (Api.Unauthorized e) { clear(c); }
-        catch (Exception e) { try { s.put("failed", true); v.write(s); } catch (Exception ignored) { } }
+        catch (Exception e) { RefreshStatus.mark(c,e instanceof java.net.SocketTimeoutException?"timeout":e instanceof java.net.UnknownHostException||e instanceof java.net.ConnectException?"network":"error");try { s.put("failed", true); v.write(s); } catch (Exception ignored) { } }
         BoardWidget.renderAll(c);
     }
 }

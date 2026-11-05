@@ -13,8 +13,8 @@ public final class BoardWidget extends AppWidgetProvider {
     static final String REFRESH = "tw.d77.widget.REFRESH";
     @Override public void onReceive(Context c, Intent i) {
         super.onReceive(c, i);
-        if (REFRESH.equals(i.getAction()) && Sync.allowManual()) {
-            Sync.requestRefresh(c);
+        if (REFRESH.equals(i.getAction())) {
+            if(Sync.allowManual())Sync.requestRefresh(c);else renderAll(c);
         } else if (Intent.ACTION_BOOT_COMPLETED.equals(i.getAction())) { Sync.schedule(c); renderAll(c); }
     }
     @Override public void onUpdate(Context c, AppWidgetManager m, int[] ids) { renderAll(c); Sync.schedule(c); }
@@ -58,6 +58,8 @@ public final class BoardWidget extends AppWidgetProvider {
         r.setTextViewText(R.id.season,data==null?"":clean(data.optString("season"),24));
         boolean stale = state.optBoolean("failed") || (data != null && (data.optBoolean("stale") || (!data.isNull("error") && !data.optString("error").isEmpty())));
         r.setTextViewText(R.id.status, login ? "請先配對" : data == null ? "等待同步" : (stale ? "更新未完成 · " : "更新於 ") + formattedTime(data.optString("updatedAt")));
+        String feedback=RefreshStatus.message(c);
+        if(!login&&feedback!=null)r.setTextViewText(R.id.status,feedback);
         r.setTextColor(R.id.status_dot,stale?Color.parseColor("#C79539"):fg);
         PendingIntent setup = PendingIntent.getActivity(c, id, new Intent(c, SetupActivity.class).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         r.setOnClickPendingIntent(R.id.settings, setup);
