@@ -38,21 +38,31 @@ export function mountRuleCopy(root,nav,products,openDialog,esc){
   for(const row of root.querySelectorAll('.rule-row')){
     const name=row.querySelector('[data-rule]')?.dataset.rule;
     if(!available.has(name))continue;
-    const input=document.createElement('input');input.type='checkbox';input.className='rule-copy-check';
-    input.setAttribute('aria-label','選取 '+name+' 的規則連結');input.checked=selected.has(name);
-    input.onchange=()=>{if(input.checked)selected.add(name);else selected.delete(name);sync();};
-    row.prepend(input);
+    const art=row.querySelector('.rule-art');
+    if(!art)continue;
+    const toggle=document.createElement('button');toggle.type='button';toggle.className='rule-art rule-copy-toggle';
+    const update=()=>{
+      const checked=selected.has(name);
+      toggle.setAttribute('aria-pressed',String(checked));
+      toggle.setAttribute('aria-label',name+' 的規則連結');
+      toggle.title=checked?'取消選取規則連結':'選取規則連結';
+      toggle.innerHTML=checked?'<i data-lucide="check" aria-hidden="true"></i>':'<i data-lucide="book-open-check" aria-hidden="true"></i>';
+    };
+    toggle.onclick=()=>{if(selected.has(name))selected.delete(name);else selected.add(name);update();globalThis.lucide?.createIcons();sync();};
+    update();art.replaceWith(toggle);
   }
   button.onclick=()=>{
     const value=ruleLinkText([...selected].map(n=>available.get(n)));
     if(!value)return;
-    openDialog('規則連結',`<textarea class="rule-copy-text" readonly aria-label="規則連結文字">${esc(value)}</textarea><div class="order-export-actions"><button type="button" data-rule-copy-again>複製文字</button><span data-rule-copy-status role="status"></span></div>`);
+    openDialog('規則連結',`<textarea class="rule-copy-text" aria-label="規則連結文字">${esc(value)}</textarea><div class="order-export-actions"><button type="button" data-rule-copy-again>複製文字</button><span data-rule-copy-status role="status"></span></div>`);
     const field=document.querySelector('.rule-copy-text'),status=document.querySelector('[data-rule-copy-status]');
     const copy=async()=>{
-      try{await navigator.clipboard.writeText(value);status.textContent='已複製';}
+      const text=field.value;
+      try{await navigator.clipboard.writeText(text);if(field.value===text)status.textContent='已複製';}
       catch{field.focus();field.select();status.textContent='請長按選取並複製';}
     };
     document.querySelector('[data-rule-copy-again]').onclick=copy;
+    field.oninput=()=>{status.textContent='';};
     void copy();
   };
   bar.append(count,button);nav.append(bar);root.append(spacer);sync();

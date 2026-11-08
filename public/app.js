@@ -1,5 +1,5 @@
 import {demoSnapshot,demoEvents} from './demo.js';
-import {mountRuleCopy,resetRuleCopy} from './rule-copy.js?v=20261109.3';
+import {mountRuleCopy,resetRuleCopy} from './rule-copy.js?v=20261109.4';
 import {showSeasonSettings} from './season-settings.js';
 import {mountWidgetSettings} from './widget-settings.js?v=20261106.1';
 import {SOURCE_DEFAULTS} from './season-config.js';
