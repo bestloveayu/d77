@@ -1,4 +1,5 @@
 import {demoSnapshot,demoEvents} from './demo.js';
+import {mountRuleCopy,resetRuleCopy} from './rule-copy.js?v=20261109.3';
 import {showSeasonSettings} from './season-settings.js';
 import {mountWidgetSettings} from './widget-settings.js?v=20261106.1';
 import {SOURCE_DEFAULTS} from './season-config.js';
@@ -118,6 +119,7 @@ function transactionDetail(id,person='all',snapshot=data){
 function render(){
   if(composingSearch&&document.activeElement?.id==='search'){chrome();return;}
   $('#nav .order-export-dock')?.remove();
+  resetRuleCopy(page==='rules'?data?.season:'');
   if(!data){$('#view').innerHTML=empty('尚無成功讀取資料，請檢查雲端連線設定');chrome();icons();return;}
   $('#view').innerHTML=({overview,orders:ordersView,inventory:inventoryView,rules:rulesView,notifications:notificationsView,transactions:transactionsView}[page])();
   if(page==='orders'){
@@ -128,6 +130,7 @@ function render(){
     }
     globalThis.D77OrderImage.mount(root,entries,{season:data.season,share:true,dock:$('#nav')});
   }
+  if(page==='rules')mountRuleCopy($('#view'),$('#nav'),data.products,openDialog,esc);
   chrome();icons();
   const field=$('#search');
   const applySearch=(input,force=false)=>{

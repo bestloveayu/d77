@@ -13,3 +13,5 @@
 .order-export-dock button{min-height:44px;background:#215e50;color:white}
 .order-export-dock[hidden],.order-export-spacer[hidden]{display:none}
 .order-export-spacer{height:60px}
+.rule-copy-check{width:20px;height:20px;flex:0 0 20px;align-self:center;accent-color:var(--green)}
+.rule-copy-text{box-sizing:border-box;display:block;width:100%;min-height:180px;max-height:50dvh;resize:vertical;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;font-size:16px;overflow-wrap:anywhere}
