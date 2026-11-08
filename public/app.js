@@ -117,6 +117,7 @@ function transactionDetail(id,person='all',snapshot=data){
 }
 function render(){
   if(composingSearch&&document.activeElement?.id==='search'){chrome();return;}
+  $('#nav .order-export-dock')?.remove();
   if(!data){$('#view').innerHTML=empty('尚無成功讀取資料，請檢查雲端連線設定');chrome();icons();return;}
   $('#view').innerHTML=({overview,orders:ordersView,inventory:inventoryView,rules:rulesView,notifications:notificationsView,transactions:transactionsView}[page])();
   if(page==='orders'){
@@ -125,7 +126,7 @@ function render(){
       const o=orders.get(article.querySelector('[data-order]')?.dataset.order);
       if(o?.lines?.length)entries.push({article,area:article,order:{name:o.name,total:o.total,lines:o.lines.map(l=>({name:l.name,quantity:l.quantity,price:l.price}))}});
     }
-    globalThis.D77OrderImage.mount(root,entries,{season:data.season,share:true});
+    globalThis.D77OrderImage.mount(root,entries,{season:data.season,share:true,dock:$('#nav')});
   }
   chrome();icons();
   const field=$('#search');

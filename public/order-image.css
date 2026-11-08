@@ -9,3 +9,7 @@
 .order-image-actions a,.order-image-actions button,.order-export-actions button{font:inherit;padding:6px 10px;border-radius:5px;border:1px solid #698a7e;background:Canvas;color:CanvasText}
 .order-image-actions a{text-decoration:none;background:#215e50;color:white}
 .order-export-select{display:inline-flex;gap:6px;align-items:center}
+.order-export-dock{box-sizing:border-box;position:absolute;bottom:100%;inset-inline:0;min-height:60px;justify-content:space-between;margin:0;padding:7px max(12px,env(safe-area-inset-right)) 7px max(12px,env(safe-area-inset-left));border-block:1px solid var(--line,#8da99f);background:var(--surface,Canvas);color:var(--ink,CanvasText)}
+.order-export-dock button{min-height:44px;background:#215e50;color:white}
+.order-export-dock[hidden],.order-export-spacer[hidden]{display:none}
+.order-export-spacer{height:60px}

@@ -158,18 +158,30 @@
     };
     const batch=button('下載所選圖片','images',()=>open(entries.filter(e=>!e.article.hidden&&e.check?.checked).map(e=>e.order),options));
     batch.disabled=!desktop;bar.append(batch);
+    const dock=desktop?null:options.dock;
+    const count=document.createElement('span'),spacer=document.createElement('div');
+    if(dock){
+      bar.classList.add('order-export-dock');bar.hidden=true;
+      count.setAttribute('aria-live','polite');bar.prepend(count);
+      spacer.className='order-export-spacer';spacer.hidden=true;
+    }
     for(const e of entries){
       const actions=document.createElement('div');actions.className='order-export-actions';
       if(!desktop){
         const label=document.createElement('label');label.className='order-export-select';
         e.check=document.createElement('input');e.check.type='checkbox';e.check.setAttribute('aria-label','選取 '+e.order.name);
-        e.check.onchange=()=>{batch.disabled=!entries.some(x=>x.check?.checked);};
+        e.check.onchange=()=>{
+          const size=entries.filter(x=>x.check?.checked).length;
+          batch.disabled=!size;
+          if(dock){bar.hidden=!size;spacer.hidden=!size;count.textContent='已選 '+size+' 筆';}
+        };
         label.append(e.check,'選取');actions.append(label);
       }
       actions.append(button('下載圖片','image-down',()=>open([e.order],options)));
       e.area.append(actions);
     }
-    root.prepend(bar);
+    if(dock){dock.append(bar);root.append(spacer);}
+    else root.prepend(bar);
   }
   globalThis.D77OrderImage={open,valid,zip,mount};
 })();
