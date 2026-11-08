@@ -34,7 +34,18 @@ export function mountRuleCopy(root,nav,products,openDialog,esc){
   const button=document.createElement('button');button.type='button';
   button.innerHTML='<i data-lucide="copy" aria-hidden="true"></i> 產生並複製';
   const spacer=document.createElement('div');spacer.className='order-export-spacer';
-  const sync=()=>{count.textContent='已選 '+selected.size+' 款';bar.hidden=!selected.size;spacer.hidden=!selected.size;};
+  const all=document.createElement('input');all.type='checkbox';
+  const label=document.createElement('label');label.append(all,'全選');
+  const group=document.createElement('div');group.className='export-dock-selection';group.append(count,label);
+  const updates=[];
+  const sync=()=>{
+    count.textContent='已選 '+selected.size+' 款';bar.hidden=!selected.size;spacer.hidden=!selected.size;
+    all.checked=selected.size===available.size;all.indeterminate=selected.size>0&&selected.size<available.size;
+  };
+  all.onchange=()=>{
+    selected.clear();if(all.checked)for(const name of available.keys())selected.add(name);
+    updates.forEach(update=>update());globalThis.lucide?.createIcons();sync();
+  };
   for(const row of root.querySelectorAll('.rule-row')){
     const name=row.querySelector('[data-rule]')?.dataset.rule;
     if(!available.has(name))continue;
@@ -49,7 +60,7 @@ export function mountRuleCopy(root,nav,products,openDialog,esc){
       toggle.innerHTML=checked?'<i data-lucide="check" aria-hidden="true"></i>':'<i data-lucide="book-open-check" aria-hidden="true"></i>';
     };
     toggle.onclick=()=>{if(selected.has(name))selected.delete(name);else selected.add(name);update();globalThis.lucide?.createIcons();sync();};
-    update();art.replaceWith(toggle);
+    updates.push(update);update();art.replaceWith(toggle);
   }
   button.onclick=()=>{
     const value=ruleLinkText([...selected].map(n=>available.get(n)));
@@ -65,5 +76,5 @@ export function mountRuleCopy(root,nav,products,openDialog,esc){
     field.oninput=()=>{status.textContent='';};
     void copy();
   };
-  bar.append(count,button);nav.append(bar);root.append(spacer);sync();
+  bar.append(group,button);nav.append(bar);root.append(spacer);sync();
 }

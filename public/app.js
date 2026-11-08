@@ -1,5 +1,5 @@
 import {demoSnapshot,demoEvents} from './demo.js';
-import {mountRuleCopy,resetRuleCopy} from './rule-copy.js?v=20261109.4';
+import {mountRuleCopy,resetRuleCopy} from './rule-copy.js?v=20261109.5';
 import {showSeasonSettings} from './season-settings.js';
 import {mountWidgetSettings} from './widget-settings.js?v=20261106.1';
 import {SOURCE_DEFAULTS} from './season-config.js';
@@ -125,8 +125,11 @@ function render(){
   if(page==='orders'){
     const root=$('#view'),orders=new Map(data.orders.map(o=>[String(o.id),o])),entries=[];
     for(const article of root.querySelectorAll('.order')){
-      const o=orders.get(article.querySelector('[data-order]')?.dataset.order);
-      if(o?.lines?.length)entries.push({article,area:article,order:{name:o.name,total:o.total,lines:o.lines.map(l=>({name:l.name,quantity:l.quantity,price:l.price}))}});
+      const name=article.querySelector('[data-order]'),o=orders.get(name?.dataset.order);
+      if(o?.lines?.length){
+        const area=document.createElement('div');name.before(area);area.append(name);
+        entries.push({article,area,order:{name:o.name,total:o.total,lines:o.lines.map(l=>({name:l.name,quantity:l.quantity,price:l.price}))}});
+      }
     }
     globalThis.D77OrderImage.mount(root,entries,{season:data.season,share:true,dock:$('#nav')});
   }

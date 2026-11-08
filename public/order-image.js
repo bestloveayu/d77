@@ -100,7 +100,6 @@
   }
   function open(orders,{season='',share=false}={}){
     if(!orders.length){alert('請先勾選要匯出的顧客訂單。');return;}
-    if(orders.length>100){alert('每次最多匯出 100 筆訂單。');return;}
     const good=orders.filter(valid), skipped=orders.filter(o=>!valid(o));
     const dialog=document.createElement('dialog');dialog.className='order-image-dialog';
     dialog.innerHTML='<h2>訂單圖片</h2><div class="order-image-controls"></div><p role="status"></p><img alt="訂單圖片預覽" hidden><div class="order-image-actions"><button type="button" data-close>關閉</button><a hidden download>下載</a><button type="button" data-share hidden>分享圖片</button></div>';
@@ -124,6 +123,7 @@
           const files=[];
           for(const [i,o] of good.entries()){
             if(run!==sequence)return;
+            status.textContent='正在準備圖片 '+(i+1)+' / '+good.length+'…';
             try{files.push({name:safeName(o.name)+'_訂單_'+(i+1)+'.png',blob:await image([o],season)});}
             catch{failures.push(o.name);}
           }
@@ -160,12 +160,32 @@
     batch.disabled=!desktop;bar.append(batch);
     const dock=desktop?null:options.dock;
     const count=document.createElement('span'),spacer=document.createElement('div');
+    const all=document.createElement('input');all.type='checkbox';
+    const update=()=>{
+      const size=entries.filter(x=>x.check?.checked).length;
+      batch.disabled=!size;
+      if(dock){
+        bar.hidden=!size;spacer.hidden=!size;count.textContent='已選 '+size+' 筆';
+        all.checked=size===entries.length;all.indeterminate=size>0&&size<entries.length;
+      }
+    };
     if(dock){
       bar.classList.add('order-export-dock');bar.hidden=true;
-      count.setAttribute('aria-live','polite');bar.prepend(count);
+      count.setAttribute('aria-live','polite');
+      const group=document.createElement('div');group.className='export-dock-selection';
+      const label=document.createElement('label');label.append(all,'全選');
+      group.append(count,label);bar.prepend(group);
+      all.onchange=()=>{for(const e of entries)e.check.checked=all.checked;update();};
       spacer.className='order-export-spacer';spacer.hidden=true;
     }
     for(const e of entries){
+      if(dock){
+        e.check=document.createElement('input');e.check.type='checkbox';e.check.className='order-name-check';
+        e.check.setAttribute('aria-label','選取 '+e.order.name);
+        e.check.onchange=update;
+        e.area.classList.add('order-name-selection');e.area.prepend(e.check);
+        continue;
+      }
       const actions=document.createElement('div');actions.className='order-export-actions';
       if(!desktop){
         const label=document.createElement('label');label.className='order-export-select';

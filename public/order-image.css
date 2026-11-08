@@ -13,6 +13,10 @@
 .order-export-dock button{min-height:44px;background:#215e50;color:white}
 .order-export-dock[hidden],.order-export-spacer[hidden]{display:none}
 .order-export-spacer{height:60px}
+.export-dock-selection,.export-dock-selection label,.order-name-selection{display:flex;align-items:center;gap:7px;min-width:0}
+.export-dock-selection{gap:12px;white-space:nowrap;font-size:13px}
+.export-dock-selection input,.order-name-check{width:18px;height:18px;flex:0 0 18px;margin:0;accent-color:var(--green)}
+.order-name-selection .order-name{min-width:0;text-align:left;overflow-wrap:anywhere}
 .rule-copy-toggle{padding:0;border:1px solid transparent;cursor:pointer}
 .rule-copy-toggle[aria-pressed=true]{background:var(--green);color:var(--surface)}
 .rule-copy-text{box-sizing:border-box;display:block;width:100%;height:clamp(200px,52dvh,520px);max-height:65dvh;resize:vertical;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;font-size:16px;overflow-wrap:anywhere}
