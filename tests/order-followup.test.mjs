@@ -14,9 +14,24 @@ test('confirmed orders waiting for registration and for required rules are disti
  assert.equal(classifyFollowUp(order(line({shipped:2,mailed:1}))).kind,'none');
  assert.equal(classifyFollowUp(order(line({shipped:2,noRulesRequired:true,mailed:null}))).kind,'none');
 });
-test('missing, conflicting, active and unknown rule requirements remain review, never guessed pending',()=>{
- for(const l of [line({shipped:null}),line({purchased:null}),line({evidence:{shipped:'processing'}}),line({evidence:{shipped:'conflict'}}),line({shipped:2,mailed:null}),line({shipped:2,noRulesRequired:null})])assert.equal(classifyFollowUp(order(l)).kind,'review');
- assert.equal(classifyFollowUp(order(line({purchased:1,shipped:0}))).kind,'none');
+test('conflicting and active evidence stays review; no purchase evidence is not a pending shipment',()=>{
+ for(const l of [line({evidence:{shipped:'processing'}}),line({evidence:{shipped:'conflict'}})])assert.equal(classifyFollowUp(order(l)).kind,'review');
+ assert.equal(classifyFollowUp(order(line({purchased:null}))).kind,'none');
+ assert.equal(classifyFollowUp(order(line({purchased:1,shipped:0}))).kind,'registration');
+});
+
+test('confirmed purchase with no shipment resource is a registration follow-up without inventing quantities',()=>{
+ const l=line({shipped:null,evidence:{purchased:'confirmed',shipped:'missing',mailed:'missing'}});
+ assert.equal(classifyFollowUp(order(l)).kind,'registration');
+ assert.equal(l.shipped,null);
+});
+
+test('confirmed shipment does not require separate purchase or mail records to show rule follow-up',()=>{
+ const l=line({purchased:null,shipped:2,mailed:null,noRulesRequired:null,evidence:{purchased:'missing',shipped:'confirmed',mailed:'missing'}});
+ assert.equal(classifyFollowUp(order(l)).kind,'rules');
+ assert.match(classifyFollowUp(order(l)).reason,/需求待核對/);
+ assert.equal(classifyFollowUp(order({...l,noRulesRequired:true})).kind,'none');
+ assert.equal(classifyFollowUp(order({...l,mailed:1})).kind,'none');
 });
 test('partial registrations and mixed required/exempt games are classified safely',()=>{
  assert.equal(classifyFollowUp(order(line({shipped:1}))).kind,'registration');
@@ -38,5 +53,16 @@ test('follow-up notifications baseline silently, enter once, and can reenter aft
  const waitingRules=order(line({shipped:2}));waitingRules.followUp=classifyFollowUp(waitingRules);
  const mailEvent=await changes(snapshot(pending),snapshot(waitingRules));assert.equal(mailEvent.filter(e=>e.type==='rules-pending').length,1);
  assert.equal((await changes(snapshot(waitingRules),snapshot(waitingRules,1,'2026-11-01T12:15:00Z'))).filter(e=>e.type==='rules-pending').length,0);
+});
+
+test('upgrading follow-up classification does not push historical reminders again',async()=>{
+ const before=order(line({shipped:null})),after=order();before.followUp={kind:'review'};after.followUp=classifyFollowUp(after);
+ assert.equal((await changes(snapshot(before,1),snapshot(after,2))).filter(e=>e.type==='registration').length,0);
+});
+
+test('purchase events identify the customer without exposing contact details',async()=>{
+ const before={...order(line({purchased:0})),name:'測試顧客'},after={...order(),name:'測試顧客'};
+ const events=await changes(snapshot(before),snapshot(after));
+ assert.equal(events.find(e=>e.type==='purchase').title,'測試顧客 · 下單已確認');
 });
 

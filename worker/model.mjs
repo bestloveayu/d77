@@ -276,7 +276,7 @@ export async function compose(input, config, now = new Date().toISOString()) {
     // Do not expose contact details to the mobile app.
     delete order.email;order.phoneSuffix=order.phone?.slice(-3)||'';delete order.phone;
   }
-  return {season:config.season,updatedAt:now,widgetFactsVersion:1,followUpVersion:1,inventoryVersion:3,stockCalculationVersion:1,unmatchedShipments,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
+  return {season:config.season,updatedAt:now,widgetFactsVersion:1,followUpVersion:2,inventoryVersion:3,stockCalculationVersion:1,unmatchedShipments,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
     ledgerDetailVersion:1,transactions:money.transactions,issues:money.issues,operations:team.operations.filter(o=>o.season===config.season).map(o=>({id:o.id,actor:o.actor,kind:o.kind,status:o.status,time:o.updatedAt||o.createdAt})),
     sourceStatus:{catalog:'ok',responses:'ok',ledger:'ok',team:'ok',documents:'ok',rules:'ok'},
     summary:{orders:orders.length,attention:orders.filter(needsAttention).length,registrationPending:orders.filter(o=>o.followUp.kind==='registration').length,rulesPending:orders.filter(o=>o.followUp.kind==='rules').length,shortages:products.filter(p=>p.shortage>0||p.usedShortage>0).length,unknownStock:products.filter(p=>p.coverage==='unknown').length,
@@ -289,7 +289,7 @@ export async function changes(previous, next) {
   for(const o of next.orders){const old=oldOrders.get(o.id);
     // An older snapshot establishes a silent migration baseline for the new reminders.
     const task=o.followUp?.kind;
-    if(previous.followUpVersion===1&&['registration','rules'].includes(task)&&old?.followUp?.kind!==task)
+    if(previous.followUpVersion===next.followUpVersion&&next.followUpVersion>=1&&['registration','rules'].includes(task)&&old?.followUp?.kind!==task)
       await add(task==='rules'?'rules-pending':task,[o.id,task,next.updatedAt],task==='registration'?'訂單待出貨登記':'訂單待寄規則','有已確認的訂單待辦，請登入查看',{page:'orders',id:o.id});
     if(!old)await add('order',o.id,'新增預購訂單','有新的訂單等待查看',{page:'orders',id:o.id});
     else if(JSON.stringify(o.lines.map(l=>[l.originalName,l.quantity,l.price]))!==JSON.stringify(old.lines.map(l=>[l.originalName,l.quantity,l.price])))
@@ -312,7 +312,7 @@ export async function changes(previous, next) {
     const old=oldOrders.get(order.id);if(!old)continue;
     for(const [field,type,title] of [['purchased','purchase','下單已確認'],['shipped','shipment','出貨已登記'],['mailed','mail','規則已寄送']]){
       const increased=order.lines.some(line=>{const before=old.lines.find(l=>l.originalName===line.originalName&&l.name===line.name);return before&&line[field]>0&&line[field]>(before[field]??0);});
-      if(increased)await add(type,[order.id,next.updatedAt],title,'雲端已確認',{page:'orders',id:order.id});
+    if(increased)await add(type,[order.id,next.updatedAt],(order.name||'姓名待核對')+' · '+title,'雲端已確認',{page:'orders',id:order.id});
     }
   }
   const oldOps=new Map(previous.operations.map(o=>[o.id,o]));
@@ -320,3 +320,4 @@ export async function changes(previous, next) {
     await add('activity',o.id,(o.actor||'成員')+'完成'+({shipment:'出貨登記',purchase:'下單',mail:'規則寄送'}[o.kind]||'協作操作'),'雲端已確認',{page:'notifications'},o.time);
   return events.map(event=>{const facts=widgetFacts(next,event);return facts?{...event,widgetFacts:facts}:event;});
 }
+

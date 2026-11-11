@@ -7,7 +7,7 @@ import {stageLabel,orderProgressLabels} from './order-status.js';
 import {parseTimestamp} from './timestamp.js?v=20261102.3';
 import {installSwipe} from './swipe.js?v=20261102.3';
 import {createPushClient} from './push.js?v=20261102.1';
-import {classifyFollowUp,awaitingPurchase,notificationChoices,notificationTypes} from './order-followup.js?v=20261103.1';
+import {classifyFollowUp,awaitingPurchase,notificationChoices,notificationTypes} from './order-followup.js?v=20261111.1';
 import {filterTransactions,transactionTotals,transactionAmount,personCash} from './transaction-summary.js?v=20261103.2';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
 const deviceStorage={get(key){try{return localStorage.getItem(key);}catch{return null;}},set(key,value){try{localStorage.setItem(key,value);return true;}catch{return false;}},remove(key){try{localStorage.removeItem(key);}catch{}}};
@@ -19,7 +19,7 @@ const badge=(text,kind='')=>`<span class="badge ${kind}">${esc(text)}</span>`;
 const progressBadges=o=>{const task=followUp(o);return orderProgressLabels(o).map(p=>badge(p.text,p.good?'good':'')).join('')+(['registration','rules'].includes(task.kind)?badge(task.label,'warn'):task.kind==='review'?badge(task.reason||task.label,'warn'):'');};
 const names={overview:'營運總覽',orders:'顧客訂單',inventory:'庫存查詢',rules:'規則進度',notifications:'最新動態',transactions:'收支紀錄'};
 const eventIcon={order:'clipboard-list',change:'git-compare-arrows',shortage:'triangle-alert',rules:'book-open',activity:'package-check',registration:'clipboard-list','rules-pending':'mail'};
-const followUp=o=>o.followUp||classifyFollowUp(o);
+const followUp=o=>classifyFollowUp(o);
 let data=null,events=[],token='',account='',demo=false,stale=false,busy=false,error='',page='overview',filter='all',search='',sort='new',timer;
 let selectedSeason=deviceStorage.get('d77-season')||'',requestEpoch=0,authGeneration=0,composingSearch=false;
 let seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};
@@ -100,7 +100,11 @@ function rulesView(){
   return filters('搜尋遊戲',[['all','全部'],['pending','待備齊'],['ready','已完成']],[['new','訂購量多到少'],['name','依名稱']])+`<div class="info-band">${icon('book-open-check')} 已備齊 ${data.summary.rulesReady} / ${data.summary.rulesTotal} 款</div>`+
   (rows.map(p=>`<article class="rule-row"><div class="rule-art">${icon(p.rules.length?'book-open-check':'book-open')}</div><div class="rule-main"><h3>${esc(p.name)}</h3>${badge(p.rules.length?'已完成':'尚無中文規則',p.rules.length?'good':'warn')}${links(p)}<p class="rule-meta">訂購 ${num(p.ordered)} 盒 · 對應 ${p.customers.length} 筆訂單</p></div><button class="icon-button" data-rule="${esc(p.name)}" title="查看訂購" aria-label="查看 ${esc(p.name)} 訂購顧客">${icon('chevron-right')}</button></article>`).join('')||empty('沒有符合條件的規則'));
 }
-function eventList(rows){return rows.length?rows.map(e=>`<article class="event ${e.read?'':'unread'}"><span class="event-icon">${icon(eventIcon[e.type]||'bell')}</span><div class="event-main"><button data-event="${esc(e.id)}">${esc(e.title)}</button><p>${esc(e.detail)}</p><p>${new Date(e.time).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</p></div></article>`).join(''):empty('目前沒有新通知');}
+function eventList(rows){return rows.length?rows.map(e=>{
+  const customer=e.type==='purchase'&&data?.orders.find(o=>o.id===e.target?.id);
+  const title=customer?.name?customer.name+' · 下單已確認':e.title;
+  return `<article class="event ${e.read?'':'unread'}"><span class="event-icon">${icon(eventIcon[e.type]||'bell')}</span><div class="event-main"><button data-event="${esc(e.id)}">${esc(title)}</button><p>${esc(e.detail)}</p><p>${new Date(e.time).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</p></div></article>`;
+}).join(''):empty('目前沒有新通知');}
 function notificationsView(){return `<button class="text-button" data-go="overview">${icon('arrow-left')}返回營運總覽</button><div class="section-heading"><span class="muted">最近 150 則動態</span><button id="read-all" class="text-button">${icon('check-check')}全部已讀</button></div><div class="segments"><button data-filter="all" class="${filter==='all'?'active':''}">全部</button><button data-filter="unread" class="${filter==='unread'?'active':''}">未讀</button></div>${eventList(events.filter(e=>filter!=='unread'||!e.read))}`;}
 function transactionsView(){
   let rows=filterTransactions(data.transactions||[],{search,type:filter,person:transactionPerson});
@@ -319,3 +323,4 @@ async function restoreSession(){
   catch(e){if(generation===authGeneration){token='';$('#login-status').textContent='無法恢復登入：'+e.message;}}
 }
 initializeGoogle();icons();window.addEventListener('load',icons);
+
