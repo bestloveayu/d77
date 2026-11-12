@@ -36,9 +36,14 @@ export function eligibleEvents(events,prefs,created,now=Date.now()){
   if(prefs.quiet&&(prefs.quietStart>prefs.quietEnd?hour>=prefs.quietStart||hour<prefs.quietEnd:hour>=prefs.quietStart&&hour<prefs.quietEnd))return [];
   return events.filter(e=>prefs.types?.includes(e.type)&&Date.parse(e.time)>created);
 }
-export async function sendBrowserPush(subscription,env){
+export function notificationPayload(event){
+  const clean=(value,max)=>String(value||'').replace(/[\u0000-\u001f\u007f]/g,' ').slice(0,max);
+  if(!event?.title)return {title:'東77 雲端管理',body:'有新的雲端動態，請登入查看。',page:'overview'};
+  return {title:clean(event.title,100),body:clean(event.detail,240),page:['orders','inventory','rules'].includes(event.target?.page)?event.target.page:'overview'};
+}
+export async function sendBrowserPush(subscription,env,payload=notificationPayload()){
   let request;
-  try{request=await buildPushPayload({data:'cloud-update',options:{ttl:300}},subscription,{
+  try{request=await buildPushPayload({data:JSON.stringify(payload),options:{ttl:300}},subscription,{
     subject:env.VAPID_SUBJECT||'https://bestloveayu.github.io/d77/',...keyValues(env)
   });}catch(e){throw fail('通知加密失敗 [PUSH_ENCRYPTION:'+safeErrorName(e)+']',503);}
   try{return await fetch(subscription.endpoint,{...request,redirect:'manual',signal:AbortSignal.timeout(10000)});}
@@ -81,7 +86,7 @@ export class PushService{
       try{
         if(!allowed.includes(record.email)){await this.storage.delete(key);continue;}
         const prefs=await preferences(record.email),now=Date.now();
-        const pending=new Map([...(record.pending||[]),...events.map(({id,type,time})=>({id,type,time}))].map(e=>[e.id,e]));
+        const pending=new Map([...(record.pending||[]),...events.map(e=>({id:e.id,type:e.type,time:e.time,payload:notificationPayload(e)}))].map(e=>[e.id,e]));
         record.pending=prefs?.pushEnabled?[...pending.values()].filter(e=>Date.parse(e.time)>record.created&&Date.parse(e.time)>now-86400000&&!record.delivered?.includes(e.id)&&prefs.types?.includes(e.type)).slice(-150):[];
         await this.storage.put(key,record);
         const eligible=eligibleEvents(record.pending,prefs,record.created);
@@ -89,7 +94,8 @@ export class PushService{
         if(record.nextTry>now)continue;
         record.failures=(record.failures||0)+1;record.nextTry=now+Math.min(900000,60000*2**Math.min(record.failures-1,4));
         await this.storage.put(key,record);
-        const response=await this.send(validateSubscription(record.subscription),this.env);
+        const latest=[...eligible].sort((a,b)=>Date.parse(b.time)-Date.parse(a.time))[0];
+        const response=await this.send(validateSubscription(record.subscription),this.env,latest.payload||notificationPayload());
         if([404,410].includes(response.status))await this.storage.delete(key);
         else if(response.ok){
           const ids=new Set(eligible.map(e=>e.id));record.delivered=[...(record.delivered||[]),...ids].slice(-300);
