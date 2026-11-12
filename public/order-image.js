@@ -6,6 +6,12 @@
     o.lines.every(l => l.name && Number.isInteger(l.quantity) && l.quantity > 0 && Number.isFinite(l.price) && l.price >= 0) &&
     o.lines.reduce((sum,l) => sum + cents(l.quantity*l.price),0) === cents(o.total);
   const safeName = s => String(s).replace(/[\\/:*?"<>|\u0000-\u001f]/g,'_').slice(0,60);
+  function removeExportLine(orders,orderIndex,lineIndex){
+    return orders.map((order,index)=>{
+      const lines=order.lines.filter((_,i)=>index!==orderIndex||i!==lineIndex).map(line=>({...line}));
+      return {...order,lines,total:lines.reduce((sum,line)=>sum+cents(line.quantity*line.price),0)/100};
+    });
+  }
   async function cover(url) {
     if (!url) return null;
     try {
@@ -100,9 +106,10 @@
   }
   function open(orders,{season='',share=false}={}){
     if(!orders.length){alert('請先勾選要匯出的顧客訂單。');return;}
-    const good=orders.filter(valid), skipped=orders.filter(o=>!valid(o));
+    const originals=orders.filter(valid).map(o=>({...o,lines:o.lines.map(l=>({...l}))})),skipped=orders.filter(o=>!valid(o));
+    let good=originals.map(o=>({...o,lines:o.lines.map(l=>({...l}))})),combine=false;
     const dialog=document.createElement('dialog');dialog.className='order-image-dialog';
-    dialog.innerHTML='<h2>訂單圖片</h2><div class="order-image-controls"></div><p role="status"></p><img alt="訂單圖片預覽" hidden><div class="order-image-actions"><button type="button" data-close>關閉</button><a hidden download>下載</a><button type="button" data-share hidden>分享圖片</button></div>';
+    dialog.innerHTML='<h2>訂單圖片</h2><div class="order-image-controls"></div><div class="order-image-editor"></div><p role="status"></p><img alt="訂單圖片預覽" hidden><div class="order-image-actions"><button type="button" data-close>關閉</button><a hidden download>下載</a><button type="button" data-share hidden>分享圖片</button></div>';
     const status=dialog.querySelector('[role=status]'),img=dialog.querySelector('img'),link=dialog.querySelector('a'),shareBtn=dialog.querySelector('[data-share]');
     const note=skipped.length?'未匯出：'+skipped.map(o=>o.name||'姓名未確認').join('、')+'（金額或品項待核對）':'';
     let url='', sequence=0, file=null;
@@ -110,20 +117,41 @@
     dialog.addEventListener('close',()=>{sequence++;clear();dialog.remove();},{once:true});
     dialog.querySelector('[data-close]').onclick=()=>dialog.close();
     shareBtn.onclick=async()=>{try{if(file)await navigator.share({files:[file]});}catch(e){if(e.name!=='AbortError')status.textContent='分享失敗，請改用下載圖片。';}};
-    async function prepare(combine=false){
+    function renderEditor(){
+      const editor=dialog.querySelector('.order-image-editor');editor.replaceChildren();
+      good.forEach((order,oi)=>{
+        const section=document.createElement('section'),heading=document.createElement('h3');
+        heading.textContent=(good.length>1?'訂單 '+(oi+1)+' · ':'')+order.name;section.append(heading);
+        order.lines.forEach((line,li)=>{
+          const row=document.createElement('div');row.className='order-image-edit-row';
+          const name=document.createElement('span'),sum=document.createElement('span'),remove=document.createElement('button');
+          name.textContent=line.name+' ×'+line.quantity;sum.textContent='$'+money(cents(line.price*line.quantity)/100);sum.className='order-image-edit-price';
+          remove.type='button';remove.className='order-image-remove';remove.textContent='×';remove.title='從本次圖片移除 '+line.name;remove.setAttribute('aria-label',remove.title);
+          remove.onclick=()=>{good=removeExportLine(good,oi,li);renderEditor();prepare();};
+          row.append(name,sum,remove);section.append(row);
+        });
+        if(!order.lines.length){const empty=document.createElement('p');empty.textContent='本筆已無匯出品項';section.append(empty);}
+        editor.append(section);
+      });
+      const total=document.createElement('p');total.className='order-image-edit-total';total.textContent='圖片品項總計：NT$ '+money(good.reduce((sum,o)=>sum+cents(o.total),0)/100);
+      const reset=document.createElement('button');reset.type='button';reset.textContent='還原全部品項';reset.onclick=()=>{good=originals.map(o=>({...o,lines:o.lines.map(l=>({...l}))}));renderEditor();prepare();};
+      const note=document.createElement('small');note.textContent='僅調整本次圖片，不修改原訂單。';editor.append(total,reset,note);
+    }
+    async function prepare(){
       const run=++sequence;clear();
-      if(!good.length){status.textContent=note;return;}
+      const active=good.filter(o=>o.lines.length);
+      if(!active.length){status.textContent=note||'請保留至少一個品項，才能產生圖片。';return;}
       status.textContent='正在準備圖片…';
       try {
         const single=orders.length===1||combine;
-        const filename=safeName(good[0].name)+'_訂單明細.png';
+        const filename=safeName(active[0].name)+'_訂單明細.png';
         let blob, failures=[];
-        if(single)blob=await image(good,season);
+        if(single)blob=await image(active,season);
         else{
           const files=[];
-          for(const [i,o] of good.entries()){
+          for(const [i,o] of active.entries()){
             if(run!==sequence)return;
-            status.textContent='正在準備圖片 '+(i+1)+' / '+good.length+'…';
+            status.textContent='正在準備圖片 '+(i+1)+' / '+active.length+'…';
             try{files.push({name:safeName(o.name)+'_訂單_'+(i+1)+'.png',blob:await image([o],season)});}
             catch{failures.push(o.name);}
           }
@@ -144,9 +172,9 @@
     if(good.length>1&&!skipped.length&&knownSame){
       const label=document.createElement('label'),check=document.createElement('input');check.type='checkbox';
       label.append(check,' 確認為同一位顧客，合成一張圖片');dialog.querySelector('.order-image-controls').append(label);
-      check.onchange=()=>prepare(check.checked);
+      check.onchange=()=>{combine=check.checked;prepare();};
     }
-    document.body.append(dialog);dialog.showModal();prepare();
+    renderEditor();document.body.append(dialog);dialog.showModal();prepare();
   }
   function mount(root, entries, options, desktop=false){
     if(!entries.length)return;
@@ -203,5 +231,6 @@
     if(dock){dock.append(bar);root.append(spacer);}
     else root.prepend(bar);
   }
-  globalThis.D77OrderImage={open,valid,zip,mount};
+  globalThis.D77OrderImage={open,valid,zip,mount,removeExportLine};
 })();
+
