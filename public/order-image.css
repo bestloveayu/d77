@@ -22,7 +22,10 @@
 .rule-copy-text{box-sizing:border-box;display:block;width:100%;height:clamp(200px,52dvh,520px);max-height:65dvh;resize:vertical;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;font-size:16px;overflow-wrap:anywhere}
 .order-image-editor{margin:12px 0;padding-block:10px;border-block:1px solid #8da99f}
 .order-image-editor h3{font-size:16px;margin:10px 0 5px;overflow-wrap:anywhere}
-.order-image-edit-row{display:grid;grid-template-columns:minmax(0,1fr) auto 44px;gap:8px;align-items:center;border-bottom:1px solid #8da99f55;padding:5px 0;font-size:15px}
+.order-image-edit-row{display:grid;grid-template-columns:minmax(0,1fr) auto 64px 44px;gap:8px;align-items:center;border-bottom:1px solid #8da99f55;padding:5px 0;font-size:15px}
+.order-image-shortage{height:44px;min-width:64px;padding:5px 8px;border:1px solid #9d792e;border-radius:5px;background:Canvas;color:CanvasText;font:inherit;cursor:pointer}
+.order-image-shortage[aria-pressed=true]{background:#ffedbc;color:#714b0d;border-color:#9d792e;font-weight:600}
+@media(max-width:480px){.order-image-edit-row{grid-template-columns:minmax(0,1fr) 64px 44px}.order-image-edit-row>span:first-child{grid-column:1/-1}.order-image-edit-price{grid-column:1}}
 .order-image-edit-row>span:first-child{overflow-wrap:anywhere}
 .order-image-edit-price{white-space:nowrap;font-variant-numeric:tabular-nums}
 .order-image-remove{width:44px;height:44px;padding:0;border:1px solid #9b5f68;border-radius:5px;background:Canvas;color:#b33b50;font-size:25px;cursor:pointer}
