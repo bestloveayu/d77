@@ -6,10 +6,18 @@
     o.lines.every(l => l.name && Number.isInteger(l.quantity) && l.quantity > 0 && Number.isFinite(l.price) && l.price >= 0) &&
     o.lines.reduce((sum,l) => sum + cents(l.quantity*l.price),0) === cents(o.total);
   const safeName = s => String(s).replace(/[\\/:*?"<>|\u0000-\u001f]/g,'_').slice(0,60);
+  const exportTotal=lines=>lines.reduce((sum,line)=>sum+(line.exportShortage?0:cents(line.quantity*line.price)),0)/100;
+  const validDraft=o=>valid({...o,total:o.lines.reduce((sum,l)=>sum+cents(l.quantity*l.price),0)/100})&&cents(o.total)===cents(exportTotal(o.lines));
+  function toggleExportShortage(orders,orderIndex,lineIndex){
+    return orders.map((order,oi)=>{
+      const lines=order.lines.map((line,li)=>({...line,...(oi===orderIndex&&li===lineIndex?{exportShortage:!line.exportShortage}:{})}));
+      return {...order,lines,total:exportTotal(lines)};
+    });
+  }
   function removeExportLine(orders,orderIndex,lineIndex){
     return orders.map((order,index)=>{
       const lines=order.lines.filter((_,i)=>index!==orderIndex||i!==lineIndex).map(line=>({...line}));
-      return {...order,lines,total:lines.reduce((sum,line)=>sum+cents(line.quantity*line.price),0)/100};
+      return {...order,lines,total:exportTotal(lines)};
     });
   }
   async function cover(url) {
@@ -33,7 +41,7 @@
     return lines;
   }
   async function image(orders, season) {
-    if (!orders.length || !orders.every(valid)) throw Error('有訂單金額待核對');
+    if (!orders.length || !orders.every(validDraft)) throw Error('有訂單金額待核對');
     const canvas=document.createElement('canvas'), ctx=canvas.getContext('2d');
     const font=(size,bold=false)=>`${bold?'bold ':''}${size}px "Microsoft JhengHei","PingFang TC",sans-serif`;
     ctx.font=font(27);
@@ -65,14 +73,15 @@
       label('品項',43,y+20,22);label('數量',429,y+20,22,'#48665b','right');
       label('單價',553,y+20,22,'#48665b','right');label('小計',677,y+20,22,'#48665b','right');y+=44;
       rows.forEach(({l,img,lines,height:h})=>{
+        if(l.exportShortage)rect(32,y,656,h,'#fff4d9');
         if(img){
           const side=Math.min(img.naturalWidth,img.naturalHeight);
           ctx.drawImage(img,(img.naturalWidth-side)/2,(img.naturalHeight-side)/2,side,side,43,y+(h-60)/2,60,60);
         }
         lines.forEach((line,j)=>label(line,img?115:43,y+h/2+(j-(lines.length-1)/2)*35));
         label(String(l.quantity),429,y+h/2,25,'#203730','right',false,64);
-        label('$'+money(l.price),553,y+h/2,24,'#203730','right',false,112);
-        label('$'+money(cents(l.price*l.quantity)/100),677,y+h/2,24,'#203730','right',false,112);
+        label(l.exportShortage?'缺貨':'$'+money(l.price),553,y+h/2,24,l.exportShortage?'#865b16':'#203730','right',false,112);
+        label(l.exportShortage?'缺貨':'$'+money(cents(l.price*l.quantity)/100),677,y+h/2,24,l.exportShortage?'#865b16':'#203730','right',false,112);
         y+=h;rect(32,y-1,656,1,'#e3ebe7');
       });
       if(grouped){label('訂單小計',43,y+20,22);label('$'+money(order.total),677,y+20,24,'#203730','right');y+=42;}
@@ -124,11 +133,13 @@
         heading.textContent=(good.length>1?'訂單 '+(oi+1)+' · ':'')+order.name;section.append(heading);
         order.lines.forEach((line,li)=>{
           const row=document.createElement('div');row.className='order-image-edit-row';
-          const name=document.createElement('span'),sum=document.createElement('span'),remove=document.createElement('button');
-          name.textContent=line.name+' ×'+line.quantity;sum.textContent='$'+money(cents(line.price*line.quantity)/100);sum.className='order-image-edit-price';
+          const name=document.createElement('span'),sum=document.createElement('span'),remove=document.createElement('button'),shortage=document.createElement('button');
+          name.textContent=line.name+' ×'+line.quantity;sum.textContent=line.exportShortage?'缺貨':'$'+money(cents(line.price*line.quantity)/100);sum.className='order-image-edit-price';
+          shortage.type='button';shortage.className='order-image-shortage';shortage.textContent='缺貨';shortage.setAttribute('aria-pressed',String(!!line.exportShortage));shortage.setAttribute('aria-label',line.name+' 缺貨');shortage.title=line.exportShortage?'取消缺貨標記':'在本次圖片標記缺貨';
+          shortage.onclick=()=>{good=toggleExportShortage(good,oi,li);renderEditor();prepare();};
           remove.type='button';remove.className='order-image-remove';remove.textContent='×';remove.title='從本次圖片移除 '+line.name;remove.setAttribute('aria-label',remove.title);
           remove.onclick=()=>{good=removeExportLine(good,oi,li);renderEditor();prepare();};
-          row.append(name,sum,remove);section.append(row);
+          row.append(name,sum,shortage,remove);section.append(row);
         });
         if(!order.lines.length){const empty=document.createElement('p');empty.textContent='本筆已無匯出品項';section.append(empty);}
         editor.append(section);
@@ -231,6 +242,6 @@
     if(dock){dock.append(bar);root.append(spacer);}
     else root.prepend(bar);
   }
-  globalThis.D77OrderImage={open,valid,zip,mount,removeExportLine};
+  globalThis.D77OrderImage={open,valid,zip,mount,removeExportLine,toggleExportShortage};
 })();
 
