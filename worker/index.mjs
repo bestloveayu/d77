@@ -3,6 +3,7 @@ import {SessionStore,sessionBearer,sessionCall} from './session.mjs';
 import { changes, digest } from './model.mjs';
 import {SeasonRegistry} from './seasons.mjs';
 import {PushService,defaultPreferences} from './browser-push.mjs';
+import {displayEvent} from './notification-display.mjs';
 import {notificationTypes} from '../public/order-followup.js';
 import {WidgetStore,widgetSummary} from './widget.mjs';
 const json=(body,status=200,headers={})=>Response.json(body,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
@@ -200,8 +201,8 @@ export class BoardStore {
     }
     if(path==='/notifications'){
       const read=new Set(await this.ctx.storage.get('read:'+user)||[]);
-      const events=await this.events();
-      return json({events:events.map(e=>({...e,read:read.has(e.id)})),pushError:await this.ctx.storage.get('pushError')||null});
+      const events=await this.events(),snapshot=await this.snapshot();
+      return json({events:events.map(e=>({...displayEvent(e,snapshot),read:read.has(e.id)})),pushError:await this.ctx.storage.get('pushError')||null});
     }
     if(path==='/read'){
       const body=await request.json(),events=await this.events();
@@ -223,3 +224,4 @@ export class BoardStore {
     return json({error:'找不到端點'},404);
   }
 }
+
