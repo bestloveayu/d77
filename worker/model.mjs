@@ -1,7 +1,7 @@
 import {classifyFollowUp,needsAttention} from '../public/order-followup.js';
 import {parseTimestamp as stockTime} from '../public/timestamp.js';
 import {confirmedCatalog,confirmedName} from './confirmed-catalog.mjs';
-import {widgetFacts} from './widget-facts.mjs';
+import {widgetFacts,itemFacts} from './widget-facts.mjs';
 export const norm = v => String(v ?? '').normalize('NFKC').replace(/\s+/g, '').toLowerCase();
 function exemption(value){
   const text=norm(value);if(['true','1','是','不需寄送','不需寄送中文規則'].includes(text))return true;
@@ -198,6 +198,10 @@ export async function compose(input, config, now = new Date().toISOString()) {
       }
       line[field]=r.doneQuantity;
       line.evidence[field]=r.activeOperationId?'processing':'confirmed';
+      const ops=team.operations.filter(op=>op.season===config.season&&op.kind===kind&&['done','succeeded'].includes(op.status)&&op.resources?.some(x=>x.key===expected.key&&x.fingerprint===expected.fingerprint)&&(!op.results||op.results.some(x=>x.key===expected.key&&x.quantity>0)));
+      ops.sort((a,b)=>(stockTime(b.updatedAt||b.createdAt)||0)-(stockTime(a.updatedAt||a.createdAt)||0));
+      const actor=ops[0]?.actor;
+      if(['小東','于正'].includes(actor)){line.actionActors||={};line.actionActors[field]=actor;}
     }
     if(line.shipped!==null&&line.evidence.purchased!=='conflict'){
       line.purchased=Math.max(line.purchased??0,line.shipped);
@@ -286,21 +290,23 @@ export async function changes(previous, next) {
   if(!previous)return []; // First successful read establishes the baseline; no historical flood.
   const events=[],add=async(type,key,title,detail,target,time=next.updatedAt)=>events.push({id:await digest([next.season,type,key]),type,title,detail,target,time});
   const oldOrders=new Map(previous.orders.map(o=>[o.id,o]));
+  const newDemand=new Set(next.orders.filter(o=>!oldOrders.has(o.id)).flatMap(o=>o.lines.filter(l=>l.quantity>0).map(l=>l.name)));
   for(const o of next.orders){const old=oldOrders.get(o.id);
     // An older snapshot establishes a silent migration baseline for the new reminders.
     const task=o.followUp?.kind;
     if(previous.followUpVersion===next.followUpVersion&&next.followUpVersion>=1&&['registration','rules'].includes(task)&&old?.followUp?.kind!==task)
       await add(task==='rules'?'rules-pending':task,[o.id,task,next.updatedAt],task==='registration'?'訂單待出貨登記':'訂單待寄規則','有已確認的訂單待辦，請登入查看',{page:'orders',id:o.id});
-    if(!old)await add('order',o.id,'新增預購訂單','有新的訂單等待查看',{page:'orders',id:o.id});
+    if(!old)await add('order',o.id,(o.name||'姓名待核對')+' 新增預購',itemFacts(o),{page:'orders',id:o.id});
     else if(JSON.stringify(o.lines.map(l=>[l.originalName,l.quantity,l.price]))!==JSON.stringify(old.lines.map(l=>[l.originalName,l.quantity,l.price])))
       await add('change',o.id+await digest(o.lines.map(l=>[l.originalName,l.quantity,l.price])),'訂購內容有異動','請核對品項與數量',{page:'orders',id:o.id});
   }
   const oldProducts=new Map(previous.products.map(p=>[p.name,p]));
-  for(const p of next.products){const old=oldProducts.get(p.name);if(!old)continue;
-    if(previous.inventoryVersion===3&&previous.stockCalculationVersion===1&&p.shortage>0&&(p.shortage!==old.shortage||!!p.shortageEstimate!==!!old.shortageEstimate))
-      await add('shortage',[p.name,p.shortage,!!p.shortageEstimate,next.updatedAt],p.shortageEstimate?'庫存缺口估算提醒':'庫存不足提醒',p.shortageEstimate?p.name+' 規劃缺口估算 '+p.shortage+' 盒（非確認剩餘需求，出貨資料待核對）':p.name+' 尚缺 '+p.shortage+' 盒',{page:'inventory',name:p.name});
+  for(const p of next.products){const old=oldProducts.get(p.name);
+    if(previous.inventoryVersion===3&&previous.stockCalculationVersion===1&&p.shortage>0&&((old&&(p.shortage!==old.shortage||!!p.shortageEstimate!==!!old.shortageEstimate))||newDemand.has(p.name)))
+      await add('shortage',[p.name,p.shortage,!!p.shortageEstimate,next.updatedAt],'庫存不足',p.shortageEstimate?p.name+' 規劃缺貨估算 '+p.shortage+' 盒（出貨資料待核對）':p.name+' 尚缺 '+p.shortage+' 盒',{page:'inventory',name:p.name});
+    if(!old)continue;
     const ruleSignature=rules=>JSON.stringify(rules.map(r=>[r.name,r.url,r.cards,...(previous.widgetFactsVersion===1?[r.modifiedTime||'']:[])]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
-    if(p.rules.length&&ruleSignature(old.rules)!==ruleSignature(p.rules))await add('rules',p.name+await digest(p.rules),'中文規則已備齊',p.name,{page:'rules',name:p.name});
+    if(p.rules.length&&ruleSignature(old.rules)!==ruleSignature(p.rules))await add('rules',p.name+await digest(p.rules),'中文規則更新',p.name,{page:'rules',name:p.name});
   }
   // Establish a baseline for older snapshots which did not carry transaction detail.
   if(Array.isArray(previous.transactions)){
@@ -312,7 +318,14 @@ export async function changes(previous, next) {
     const old=oldOrders.get(order.id);if(!old)continue;
     for(const [field,type,title] of [['purchased','purchase','下單已確認'],['shipped','shipment','出貨已登記'],['mailed','mail','規則已寄送']]){
       const increased=order.lines.some(line=>{const before=old.lines.find(l=>l.originalName===line.originalName&&l.name===line.name);return before&&line[field]>0&&line[field]>(before[field]??0);});
-    if(increased)await add(type,[order.id,next.updatedAt],(order.name||'姓名待核對')+' · '+title,'雲端已確認',{page:'orders',id:order.id});
+    if(increased){
+      const changed=order.lines.filter(line=>{const before=old.lines.find(l=>l.originalName===line.originalName&&l.name===line.name);return before&&line[field]>0&&line[field]>(before[field]??0);});
+      const actors=[...new Set(changed.map(l=>l.actionActors?.[field]).filter(a=>['小東','于正'].includes(a)))];
+      const action=field==='shipped'?'登記':field==='mailed'?'寄送':'';
+      const detail=action?(actors.length?actors.map(a=>a+action).join('、')+(changed.some(l=>!l.actionActors?.[field])?'；部分操作者待確認':''):'操作者待確認'):itemFacts({lines:changed});
+      await add(type,[order.id,next.updatedAt],(order.name||'姓名待核對')+' '+title,detail,{page:'orders',id:order.id});
+      if(field==='mailed')events.at(-1).itemNames=changed.map(l=>l.name);
+    }
     }
   }
   const oldOps=new Map(previous.operations.map(o=>[o.id,o]));
