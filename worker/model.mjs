@@ -295,7 +295,7 @@ export async function changes(previous, next) {
     // An older snapshot establishes a silent migration baseline for the new reminders.
     const task=o.followUp?.kind;
     if(previous.followUpVersion===next.followUpVersion&&next.followUpVersion>=1&&['registration','rules'].includes(task)&&old?.followUp?.kind!==task)
-      await add(task==='rules'?'rules-pending':task,[o.id,task,next.updatedAt],task==='registration'?'訂單待出貨登記':'訂單待寄規則','有已確認的訂單待辦，請登入查看',{page:'orders',id:o.id});
+      await add(task==='rules'?'rules-pending':task,[o.id,task,next.updatedAt],task==='registration'?'訂單待出貨登記':(o.name||'姓名待核對')+' 規則待寄','有已確認的訂單待辦，請登入查看',{page:'orders',id:o.id});
     if(!old)await add('order',o.id,(o.name||'姓名待核對')+' 新增預購',itemFacts(o),{page:'orders',id:o.id});
     else if(JSON.stringify(o.lines.map(l=>[l.originalName,l.quantity,l.price]))!==JSON.stringify(old.lines.map(l=>[l.originalName,l.quantity,l.price])))
       await add('change',o.id+await digest(o.lines.map(l=>[l.originalName,l.quantity,l.price])),'訂購內容有異動','請核對品項與數量',{page:'orders',id:o.id});
