@@ -54,7 +54,11 @@ function financeSummary(action='',className=''){
 function overview(){
   const s=data.summary;
   const registration=data.orders.filter(o=>followUp(o).kind==='registration').length,rulesPending=data.orders.filter(o=>followUp(o).kind==='rules').length,unplaced=data.orders.filter(awaitingPurchase).length;
-  const stats=[['clipboard-list','訂單數',s.orders,'','orders','all'],['clock-3','待出貨/待下單',`${registration}/${unplaced}`,registration>0?'warn':'','orders',registration>0?'registration':'pending'],['package-open','缺貨品項',s.shortages,'warn','inventory','shortage'],['book-open-check','規則已完成',`${s.rulesReady}/${s.rulesTotal}`,'','rules','ready']];
+  const pair=(glyph,label,left,right,kind='')=>`<div class="metric metric-pair ${kind}"><span class="metric-label">${icon(glyph)}<span>${label}</span></span><div class="metric-value">${[left,right].map(([count,name,target,targetFilter],index)=>`${index?'<span class="metric-slash" aria-hidden="true">/</span>':''}<button class="metric-number" data-go="${target}" data-filter="${targetFilter}" aria-label="${name} ${count}" title="查看${name}"><strong>${count}</strong></button>`).join('')}</div></div>`;
+  const metricCards=pair('clipboard-list','待下單/訂單數',[unplaced,'待下單','orders','pending'],[s.orders,'訂單數','orders','all'])+
+    pair('clock-3','待寄規則/待出貨',[rulesPending,'待寄規則','orders','rules'],[registration,'待出貨','orders','registration'],rulesPending>0||registration>0?'warn':'')+
+    `<button class="metric warn" data-go="inventory" data-filter="shortage"><span class="metric-label">${icon('package-open')}<span>缺貨品項</span></span><span class="metric-value"><strong>${s.shortages}</strong><span class="metric-chevron">${icon('chevron-right')}</span></span></button>`+
+    pair('book-open-check','規則已完成',[s.rulesReady,'已完成規則','rules','ready'],[s.rulesTotal,'全部規則','rules','all']);
   const low=data.products.filter(p=>p.shortage>0||p.usedShortage>0).slice(0,4);
   const finance=financeSummary(`<button class="text-button" data-go="transactions">查看全部 ${icon('chevron-right')}</button>`,'overview-finance');
   return `<section class="section">${heading('最新動態',`<button class="text-button" data-go="notifications">查看全部 ${icon('chevron-right')}</button>`)}${eventList(events.slice(0,3))}</section>
@@ -68,7 +72,7 @@ function overview(){
   </section>
   ${finance}
   <section class="section">${heading('缺貨清單',`<button class="text-button" data-go="inventory">查看全部 ${icon('chevron-right')}</button>`)}${stockTable(low)}</section>
-  <div class="metrics">${stats.map(([i,label,count,kind,target,targetFilter])=>`<button class="metric ${kind}" data-go="${target}" data-filter="${targetFilter}"><span class="metric-label">${icon(i)}<span>${label}</span></span><span class="metric-value"><strong>${count}</strong><span class="metric-chevron">${icon('chevron-right')}</span></span></button>`).join('')}</div>`;
+  <div class="metrics">${metricCards}</div>`;
 }
 function filters(placeholder,options,sortOptions,className='',extra=''){return `<div class="filters"><label class="search">${icon('search')}<input id="search" type="search" aria-label="${placeholder}" placeholder="${placeholder}" value="${esc(search)}" autocomplete="off"></label>${sortOptions?`<select id="sort" aria-label="排序">${sortOptions.map(([value,label])=>`<option value="${value}" ${sort===value?'selected':''}>${label}</option>`).join('')}</select>`:''}${extra}</div><div class="segments ${className}">${options.map(([value,label])=>`<button data-filter="${value}" class="${filter===value?'active':''}" aria-pressed="${filter===value}">${label}</button>`).join('')}</div>`;}
 const parseTime=value=>parseTimestamp(value)??0;
@@ -112,7 +116,7 @@ function transactionsView(){
   const totals=transactionTotals(rows,transactionPerson),personLabel={all:'全部收付款人',east:'小東',yu:'于正'}[transactionPerson];
   const personSelect=`<select id="transaction-person" aria-label="收付款人">${[['all','全部收付款人'],['east','小東'],['yu','于正']].map(([value,label])=>`<option value="${value}" ${transactionPerson===value?'selected':''}>${label}</option>`).join('')}</select>`;
   const subtotal=`<section class="transaction-subtotal" aria-label="篩選小計"><h3>篩選小計 · ${totals.count} 筆 · ${personLabel}</h3><div class="transaction-subtotal-values"><div><small>收入</small><strong>${money(totals.income)}</strong></div><div><small>成本</small><strong>${money(totals.cost)}</strong></div><div><small>結餘</small><strong>${money(totals.profit)}</strong></div></div>${totals.profit==null?'<p class="notice">部分金額尚無可核對資料，小計未當成零。</p>':''}</section>`;
-  return financeSummary()+filters('搜尋品項、顧客、名目或交易編號',[['all','全部'],...['進貨成本','銷貨收入','其他成本','其他收入','結算','未分類'].map(x=>[x,x])],[['new','時間新到舊'],['old','時間舊到新']],'transaction-filters',personSelect)+subtotal+`<p class="count-line">${esc(data.season)} · 共 ${rows.length} 筆明細</p>`+(rows.length?transactionList(rows,transactionPerson):empty(data.transactions?'沒有符合條件的交易':'尚未取得交易明細，請重新讀取雲端'));
+  return financeSummary()+filters('搜尋品項、顧客、名目或交易編號',[['all','全部'],...['進貨成本','銷貨收入','其他成本','其他收入','結算'].map(x=>[x,x])],[['new','時間新到舊'],['old','時間舊到新']],'transaction-filters',personSelect)+subtotal+`<p class="count-line">${esc(data.season)} · 共 ${rows.length} 筆明細</p>`+(rows.length?transactionList(rows,transactionPerson):empty(data.transactions?'沒有符合條件的交易':'尚未取得交易明細，請重新讀取雲端'));
 }
 function transactionList(rows,person='all'){return rows.map(t=>`<article class="order"><div class="order-top"><div><button class="order-name" data-transaction="${esc(t.id)}" data-person="${person}">${esc(t.subject||t.name||'—')}${icon('chevron-right')}</button><p class="order-meta">${esc(t.time||'時間未記錄')} · ${esc(t.actor||'收付款人未記錄')}</p></div><strong>${money(transactionAmount(t,person))}</strong></div><div class="badges">${badge(t.kind,['銷貨收入','其他收入'].includes(t.kind)?'good':['進貨成本','其他成本'].includes(t.kind)?'warn':'')}${t.name?badge(t.name):''}${t.quantity?badge('數量 '+t.quantity):''}</div></article>`).join('');}
 function transactionDetail(id,person='all',snapshot=data){
