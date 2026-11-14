@@ -1,7 +1,14 @@
-import {itemFacts} from './widget-facts.mjs';
+import {itemFacts,widgetFacts} from './widget-facts.mjs';
 // Read-time projection only: persisted event IDs, timestamps and delivery claims stay intact.
 export function displayEvent(event,snapshot){
   const out={...event};
+  if(event.activityFacts)return {...out,title:event.activityFacts.title,detail:event.activityFacts.body};
+  if(['registration','purchase','rules-pending'].includes(event.type)){
+    const facts=widgetFacts(snapshot,event);if(facts)return {...out,title:facts.title,detail:facts.body};
+  }
+  if(['stock','shortage'].includes(event.type)){
+    const facts=widgetFacts(snapshot,event);if(facts)return {...out,title:facts.title,detail:facts.body};
+  }
   if(event.type==='shortage')out.title='庫存不足';
   if(event.type==='rules')out.title='中文規則更新';
   if(['order','change','purchase','shipment','mail','rules-pending'].includes(event.type)){
@@ -17,4 +24,3 @@ export function displayEvent(event,snapshot){
   }
   return out;
 }
-

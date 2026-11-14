@@ -1,7 +1,8 @@
 import {classifyFollowUp,needsAttention} from '../public/order-followup.js';
 import {parseTimestamp as stockTime} from '../public/timestamp.js';
 import {confirmedCatalog,confirmedName} from './confirmed-catalog.mjs';
-import {widgetFacts,itemFacts} from './widget-facts.mjs';
+import {widgetFacts,itemFacts,pendingFacts} from './widget-facts.mjs';
+import {ruleChanges,ruleFacts,stockFacts,shortageFacts} from './activity-facts.mjs';
 export const norm = v => String(v ?? '').normalize('NFKC').replace(/\s+/g, '').toLowerCase();
 function exemption(value){
   const text=norm(value);if(['true','1','是','不需寄送','不需寄送中文規則'].includes(text))return true;
@@ -294,31 +295,54 @@ export async function changes(previous, next) {
   for(const o of next.orders){const old=oldOrders.get(o.id);
     // An older snapshot establishes a silent migration baseline for the new reminders.
     const task=o.followUp?.kind;
-    if(previous.followUpVersion===next.followUpVersion&&next.followUpVersion>=1&&['registration','rules'].includes(task)&&old?.followUp?.kind!==task)
-      await add(task==='rules'?'rules-pending':task,[o.id,task,next.updatedAt],task==='registration'?'訂單待出貨登記':(o.name||'姓名待核對')+' 規則待寄','有已確認的訂單待辦，請登入查看',{page:'orders',id:o.id});
+    if(previous.followUpVersion===next.followUpVersion&&next.followUpVersion>=1&&['registration','rules'].includes(task)&&old?.followUp?.kind!==task){
+      const type=task==='rules'?'rules-pending':task,facts=pendingFacts(o,type);
+      await add(type,[o.id,task,next.updatedAt],facts.title,facts.body,{page:'orders',id:o.id});
+      events.at(-1).activityFacts=facts;
+    }
     if(!old)await add('order',o.id,(o.name||'姓名待核對')+' 新增預購',itemFacts(o),{page:'orders',id:o.id});
     else if(JSON.stringify(o.lines.map(l=>[l.originalName,l.quantity,l.price]))!==JSON.stringify(old.lines.map(l=>[l.originalName,l.quantity,l.price])))
       await add('change',o.id+await digest(o.lines.map(l=>[l.originalName,l.quantity,l.price])),'訂購內容有異動','請核對品項與數量',{page:'orders',id:o.id});
   }
   const oldProducts=new Map(previous.products.map(p=>[p.name,p]));
   for(const p of next.products){const old=oldProducts.get(p.name);
-    if(previous.inventoryVersion===3&&previous.stockCalculationVersion===1&&p.shortage>0&&((old&&(p.shortage!==old.shortage||!!p.shortageEstimate!==!!old.shortageEstimate))||newDemand.has(p.name)))
-      await add('shortage',[p.name,p.shortage,!!p.shortageEstimate,next.updatedAt],'庫存不足',p.shortageEstimate?p.name+' 規劃缺貨估算 '+p.shortage+' 盒（出貨資料待核對）':p.name+' 尚缺 '+p.shortage+' 盒',{page:'inventory',name:p.name});
+    if(previous.inventoryVersion===3&&previous.stockCalculationVersion===1&&(p.shortage>0||p.usedShortage>0)&&((old&&(p.shortage!==old.shortage||p.usedShortage!==old.usedShortage||!!p.shortageEstimate!==!!old.shortageEstimate))||newDemand.has(p.name))){
+      const facts=shortageFacts(p);
+      if(p.shortageEstimate)facts.body+='（規劃估算，出貨資料待核對）';
+      await add('shortage',[p.name,p.shortage,p.usedShortage,!!p.shortageEstimate,next.updatedAt],facts.title,facts.body,{page:'inventory',name:p.name});
+      events.at(-1).activityFacts=facts;
+    }
     if(!old)continue;
-    const ruleSignature=rules=>JSON.stringify(rules.map(r=>[r.name,r.url,r.cards,...(previous.widgetFactsVersion===1?[r.modifiedTime||'']:[])]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
-    if(p.rules.length&&ruleSignature(old.rules)!==ruleSignature(p.rules))await add('rules',p.name+await digest(p.rules),'中文規則更新',p.name,{page:'rules',name:p.name});
+    const files=ruleChanges(old.rules,p.rules);
+    if(files.length){
+      const facts=ruleFacts(p.name,files);
+      await add('rules',p.name+await digest(p.rules),facts.title,facts.body,{page:'rules',name:p.name});
+      events.at(-1).activityFacts=facts;
+    }
   }
   // Establish a baseline for older snapshots which did not carry transaction detail.
   if(Array.isArray(previous.transactions)){
     const oldTransactions=new Map(previous.transactions.map(tx=>[tx.id,JSON.stringify(tx)]));
-    for(const tx of next.transactions||[])if(Number.isInteger(tx.quantity)&&tx.quantity!==0&&oldTransactions.get(tx.id)!==JSON.stringify(tx))
-      await add('stock',[tx.id,await digest(tx)],'庫存異動',tx.name,{page:'inventory',transactionId:tx.id});
+    for(const tx of next.transactions||[])if(Number.isInteger(tx.quantity)&&tx.quantity!==0&&!oldTransactions.has(tx.id)){
+      const base=String(tx.name||'').replace(/[（(]二手[）)]\s*$/,'');
+      const product=next.products.find(p=>[p.name,...(p.sourceNames||[])].includes(base));
+      const facts=stockFacts(tx,product?.name||tx.name);
+      await add('stock',[tx.id,await digest(tx)],facts.title,facts.body,{page:'inventory',transactionId:tx.id});
+      events.at(-1).activityFacts=facts;
+    }
   }
   for(const order of next.orders){
     const old=oldOrders.get(order.id);if(!old)continue;
     for(const [field,type,title] of [['purchased','purchase','下單已確認'],['shipped','shipment','出貨已登記'],['mailed','mail','規則已寄送']]){
       const increased=order.lines.some(line=>{const before=old.lines.find(l=>l.originalName===line.originalName&&l.name===line.name);return before&&line[field]>0&&line[field]>(before[field]??0);});
     if(increased){
+      if(field==='purchased'){
+        if(previous.followUpVersion!==next.followUpVersion||!next.followUpVersion)continue;
+        if(events.some(e=>e.type==='registration'&&e.target?.id===order.id)||!order.lines.some(l=>(l.purchased||0)>(l.shipped||0)))continue;
+        const facts=pendingFacts(order,'registration');
+        await add('registration',[order.id,'purchase',next.updatedAt],facts.title,facts.body,{page:'orders',id:order.id});
+        events.at(-1).activityFacts=facts;continue;
+      }
       const changed=order.lines.filter(line=>{const before=old.lines.find(l=>l.originalName===line.originalName&&l.name===line.name);return before&&line[field]>0&&line[field]>(before[field]??0);});
       const actors=[...new Set(changed.map(l=>l.actionActors?.[field]).filter(a=>['小東','于正'].includes(a)))];
       const action=field==='shipped'?'登記':field==='mailed'?'寄送':'';
@@ -333,4 +357,3 @@ export async function changes(previous, next) {
     await add('activity',o.id,(o.actor||'成員')+'完成'+({shipment:'出貨登記',purchase:'下單',mail:'規則寄送'}[o.kind]||'協作操作'),'雲端已確認',{page:'notifications'},o.time);
   return events.map(event=>{const facts=widgetFacts(next,event);return facts?{...event,widgetFacts:facts}:event;});
 }
-

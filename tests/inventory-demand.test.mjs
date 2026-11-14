@@ -63,7 +63,7 @@ test('inventory migration is silent and subsequent ledger shortage changes notif
   previous.inventoryVersion=2;assert.deepEqual(await changes(previous,next),[]);
   previous.inventoryVersion=3;
   const events=await changes(previous,next);
-  assert.equal(events.length,1);assert.equal(events[0].title,'庫存不足提醒');assert.match(events[0].detail,/尚缺 4/);
+  assert.equal(events.length,1);assert.equal(events[0].title,'北海 庫存不足');assert.match(events[0].detail,/全新缺 4/);
   next.products[0].shortageEstimate=false;delete previous.inventoryVersion;
   const confirmed=await changes(previous,next);assert.equal(confirmed.length,0);
 });

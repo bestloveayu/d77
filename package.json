@@ -1,7 +1,7 @@
 {
   "name": "dong77-cloud-board",
   "private": true,
-  "version": "0.9.2",
+  "version": "0.9.3",
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
@@ -16,4 +16,3 @@
     "wrangler": "^4.45.0"
   }
 }
-

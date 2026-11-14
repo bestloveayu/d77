@@ -20,4 +20,6 @@ test('old shipment and mail do not guess historical operator from current order'
  assert.equal(displayEvent({type:'shipment',target:{id:'o'},detail:'雲端已確認'},snapshot).detail,'登記人待確認');
  assert.equal(displayEvent({type:'mail',target:{id:'o'},detail:'于正寄送'},snapshot).detail,'于正寄送');
 });
-
+test('rules-pending saved notifications show the customer name',()=>{
+ assert.equal(displayEvent({type:'rules-pending',target:{id:'o'},title:'訂單待寄規則'},snapshot).title,'陳元笙 已出貨待寄規則');
+});

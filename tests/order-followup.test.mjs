@@ -63,6 +63,6 @@ test('upgrading follow-up classification does not push historical reminders agai
 test('purchase events identify the customer without exposing contact details',async()=>{
  const before={...order(line({purchased:0})),name:'測試顧客'},after={...order(),name:'測試顧客'};
  const events=await changes(snapshot(before),snapshot(after));
- assert.equal(events.find(e=>e.type==='purchase').title,'測試顧客 · 下單已確認');
+ assert.equal(events.find(e=>e.type==='registration').title,'測試顧客 已下單待出貨');
+ assert.equal(events.filter(e=>['purchase','registration'].includes(e.type)).length,1);
 });
-

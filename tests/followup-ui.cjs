@@ -1,7 +1,7 @@
 const {chromium}=require('C:/Users/bestl/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 (async()=>{
- const browser=await chromium.launch({channel:'msedge'});
+ const browser=await chromium.launch({channel:'msedge',headless:true});
  try{
  const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];
  page.on('pageerror',e=>errors.push(e.message));
@@ -20,7 +20,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
    return r.fulfill({body,contentType:file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':'text/html'});
  });
  await page.goto('http://fixture.test/');
- try{await page.getByRole('button',{name:'已下單顧客 · 下單已確認',exact:true}).waitFor({timeout:8000});}
+ try{await page.getByRole('button',{name:'已下單顧客 已下單待出貨',exact:true}).waitFor({timeout:8000});}
  catch(e){console.error(errors,await page.locator('body').innerText());throw e;}
  await page.locator('#nav [data-page=orders]').click();
  await page.getByRole('button',{name:'待出貨登記',exact:true}).click();
@@ -34,4 +34,3 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  console.log('Mobile existing activity customer names, missing-resource filters, and width passed');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});
-

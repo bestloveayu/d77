@@ -108,7 +108,7 @@ function rulesView(){
 }
 function eventList(rows){return rows.length?rows.map(e=>{
   const customer=e.type==='purchase'&&data?.orders.find(o=>o.id===e.target?.id);
-  const title=customer?.name?customer.name+' · 下單已確認':e.title;
+  const title=customer?.name?customer.name+' 已下單待出貨':e.title;
   return `<article class="event ${e.read?'':'unread'}"><span class="event-icon">${icon(eventIcon[e.type]||'bell')}</span><div class="event-main"><button data-event="${esc(e.id)}">${esc(title)}</button><p>${esc(e.detail)}</p><p>${new Date(e.time).toLocaleString('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</p></div></article>`;
 }).join(''):empty('目前沒有新通知');}
 function notificationsView(){return `<button class="text-button" data-go="overview">${icon('arrow-left')}返回營運總覽</button><div class="section-heading"><span class="muted">最近 150 則動態</span><button id="read-all" class="text-button">${icon('check-check')}全部已讀</button></div><div class="segments"><button data-filter="all" class="${filter==='all'?'active':''}">全部</button><button data-filter="unread" class="${filter==='unread'?'active':''}">未讀</button></div>${eventList(events.filter(e=>filter!=='unread'||!e.read))}`;}
@@ -356,4 +356,3 @@ async function restoreSession(){
   catch(e){if(generation===authGeneration){token='';$('#login-status').textContent='無法恢復登入：'+e.message;}}
 }
 initializeGoogle();icons();window.addEventListener('load',icons);
-
