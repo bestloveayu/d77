@@ -72,7 +72,7 @@ public final class BoardWidget extends AppWidgetProvider {
         Intent target=new Intent(c,OpenActivity.class);
         r.setPendingIntentTemplate(R.id.feed,PendingIntent.getActivity(c,770000+id,target,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_MUTABLE));
         String[] keys = {"awaitingPurchase","awaitingShipment","awaitingRules","shortage"};
-        String[] labels = {"待下單","待出貨","待寄規則","缺貨"};
+        String[] labels = {"新增預購","待出貨","待寄規則","缺貨"};
         int[] views = {R.id.purchase,R.id.shipment,R.id.rules,R.id.shortage};
         int[] values={R.id.purchase_value,R.id.shipment_value,R.id.rules_value,R.id.shortage_value};
         int[] labelViews={R.id.purchase_label,R.id.shipment_label,R.id.rules_label,R.id.shortage_label};
@@ -99,3 +99,4 @@ public final class BoardWidget extends AppWidgetProvider {
     }
     private static String shortTime(String value){try{return java.time.Instant.parse(value).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));}catch(Exception e){return "";}}
 }
+

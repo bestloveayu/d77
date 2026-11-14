@@ -9,13 +9,13 @@
     <ListView android:id="@+id/feed" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:divider="@null" android:dividerHeight="0dp" android:scrollbars="vertical" android:cacheColorHint="@android:color/transparent" />
     <LinearLayout android:id="@+id/metrics_line" android:layout_width="match_parent" android:layout_height="1dp" android:background="#D2DDD7" />
     <LinearLayout android:id="@+id/metrics" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="28dp" android:paddingTop="1dp" android:paddingBottom="1dp" android:gravity="center_vertical" android:baselineAligned="false">
-        <LinearLayout android:id="@+id/purchase" style="@style/Metric"><TextView android:id="@+id/purchase_label" style="@style/MetricLabel" android:text="待下單" /><TextView android:id="@+id/purchase_value" style="@style/MetricValue" /></LinearLayout>
+        <LinearLayout android:id="@+id/purchase" style="@style/Metric" android:layout_weight="1.2"><TextView android:id="@+id/purchase_label" style="@style/MetricLabel" android:text="新增預購" /><TextView android:id="@+id/purchase_value" style="@style/MetricValue" /></LinearLayout>
         <LinearLayout android:id="@+id/metric_sep1" style="@style/MetricSeparator" />
         <LinearLayout android:id="@+id/shipment" style="@style/Metric"><TextView android:id="@+id/shipment_label" style="@style/MetricLabel" android:text="待出貨" /><TextView android:id="@+id/shipment_value" style="@style/MetricValue" /></LinearLayout>
         <LinearLayout android:id="@+id/metric_sep2" style="@style/MetricSeparator" />
         <LinearLayout android:id="@+id/rules" style="@style/Metric"><TextView android:id="@+id/rules_label" style="@style/MetricLabel" android:text="待寄規則" /><TextView android:id="@+id/rules_value" style="@style/MetricValue" /></LinearLayout>
         <LinearLayout android:id="@+id/metric_sep3" style="@style/MetricSeparator" />
-        <LinearLayout android:id="@+id/shortage" style="@style/Metric"><TextView android:id="@+id/shortage_label" style="@style/MetricLabel" android:text="缺貨" /><TextView android:id="@+id/shortage_value" style="@style/MetricValue" /></LinearLayout>
+        <LinearLayout android:id="@+id/shortage" style="@style/Metric" android:layout_weight="0.8"><TextView android:id="@+id/shortage_label" style="@style/MetricLabel" android:text="缺貨" /><TextView android:id="@+id/shortage_value" style="@style/MetricValue" /></LinearLayout>
     </LinearLayout>
     <LinearLayout android:id="@+id/footer_line" android:layout_width="match_parent" android:layout_height="1dp" android:background="#D2DDD7" />
     <LinearLayout android:id="@+id/footer" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="18dp" android:paddingTop="1dp" android:gravity="center_vertical">
@@ -24,3 +24,4 @@
         <TextView android:id="@+id/view_all" android:layout_width="wrap_content" android:layout_height="wrap_content" android:fontFamily="@font/widget_serif" android:includeFontPadding="false" android:textSize="10sp" android:text="查看全部 ›" android:maxLines="1" />
     </LinearLayout>
 </LinearLayout>
+
