@@ -47,11 +47,6 @@ public final class FeedService extends RemoteViewsService {
             Shortcut shortcut=Shortcut.resolve(item.optString("type"),target==null?"":target.optString("id"),target==null?"":target.optString("name"),item.optString("page"),item.optString("filter"));
             Intent link=new Intent().putExtra("page",shortcut.page).putExtra("filter",shortcut.filter).putExtra("order",shortcut.order).putExtra("product",shortcut.product).putExtra("action",shortcut.action);
             row.setOnClickFillInIntent(R.id.row,link);
-            row.setViewVisibility(R.id.row_action,shortcut.label.isEmpty()?android.view.View.GONE:android.view.View.VISIBLE);
-            row.setTextViewText(R.id.row_action,shortcut.label);
-            row.setTextColor(R.id.row_action,foreground);
-            row.setContentDescription(R.id.row_action,shortcut.label+"："+title);
-            row.setOnClickFillInIntent(R.id.row_action,link);
             row.setContentDescription(R.id.row,title+"，"+body);
             return row;
         }

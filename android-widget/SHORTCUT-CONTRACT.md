@@ -5,8 +5,8 @@ Hash remains a bare page. Query parameters are UTF-8 percent encoded.
 
 | Feed type | Structured identity | Destination | Action |
 | --- | --- | --- | --- |
-| rules | target.name = exact product.name | #rules + widgetProduct | copy-rules |
-| rules-pending | target.id = order.id | #orders + widgetOrder + widgetFilter=rules | email |
+| rules | target.name = exact product.name | #rules + widgetProduct | view |
+| rules-pending | target.id = order.id | #orders + widgetOrder + widgetFilter=rules | view |
 | order | target.id = order.id | #orders + widgetOrder | view |
 | shortage | target.name = exact product.name, if known | #inventory + widgetProduct + widgetFilter=shortage | view |
 
@@ -16,6 +16,8 @@ interfaces only; they must not send mail, mark rules sent, or mutate stock.
 Unknown/missing metadata falls back to the existing page/filter link. Unknown
 types never interpret target.id as an order (e.g. stock transaction IDs).
 Product names and order IDs are never inferred from truncated titles or bodies.
+Whole-row taps use view with blank action labels and no per-row action buttons.
+Shortcut.url still accepts explicitly requested email and copy-rules actions.
 
 ## Backend patch required (not applied here)
 
@@ -36,7 +38,7 @@ in widgetSummary's explicitly projected feed rows (do not spread entire events):
 
 Parent web handler consumes query only after authenticated refresh, validates
 identity against current authorized snapshot, opens matching customer/editor or
-rule-copy interface, and reports missing targets without choosing another row.
+product detail interface, and reports missing targets without choosing another row.
 
 ## Verification boundary
 

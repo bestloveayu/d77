@@ -200,7 +200,7 @@
       const glyph=document.createElement('i');glyph.dataset.lucide=icon;glyph.setAttribute('aria-hidden','true');
       b.append(glyph,' '+label);b.onclick=action;return b;
     };
-    const batch=button('下載所選圖片','images',()=>open(entries.filter(e=>!e.article.hidden&&e.check?.checked).map(e=>e.order),options));
+    const batch=button(desktop?'下載所選圖片':'訂單圖片預覽','images',()=>open(entries.filter(e=>!e.article.hidden&&e.check?.checked).map(e=>e.order),options));
     batch.disabled=!desktop;bar.append(batch);
     const dock=desktop?null:options.dock;
     const count=document.createElement('span'),spacer=document.createElement('div');

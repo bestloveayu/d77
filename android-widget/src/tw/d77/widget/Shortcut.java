@@ -9,10 +9,10 @@ public final class Shortcut {
     private static String identity(String s){return s!=null&&s.length()<=512&&!s.matches("(?s).*[\\p{Cntrl}].*")?s:"";}
     public static Shortcut resolve(String type,String id,String name,String fallback,String filter){
         id=identity(id);name=identity(name);
-        if("rules".equals(type)&&!name.isEmpty())return new Shortcut("rules","","",name,"copy-rules","複製規則");
-        if("rules-pending".equals(type)&&!id.isEmpty())return new Shortcut("orders","rules",id,"","email","編輯郵件");
-        if("order".equals(type)&&!id.isEmpty())return new Shortcut("orders","",id,"","view","查看顧客");
-        if("shortage".equals(type))return new Shortcut("inventory","shortage","",name,"view","查看庫存");
+        if("rules".equals(type)&&!name.isEmpty())return new Shortcut("rules","","",name,"view","");
+        if("rules-pending".equals(type)&&!id.isEmpty())return new Shortcut("orders","rules",id,"","view","");
+        if("order".equals(type)&&!id.isEmpty())return new Shortcut("orders","",id,"","view","");
+        if("shortage".equals(type))return new Shortcut("inventory","shortage","",name,"view","");
         return new Shortcut(page(fallback),filter==null?"":filter,"","","view","");
     }
     public static String url(String page,String filter,String order,String product,String action){

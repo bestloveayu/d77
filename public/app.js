@@ -1,7 +1,7 @@
 import {demoSnapshot,demoEvents} from './demo.js';
 import {mountRuleCopy,resetRuleCopy} from './rule-copy.js?v=20261109.5';
 import {showSeasonSettings} from './season-settings.js';
-import {mountWidgetSettings} from './widget-settings.js?v=20261114.1';
+import {mountWidgetSettings} from './widget-settings.js?v=20261114.2';
 import {SOURCE_DEFAULTS} from './season-config.js';
 import {stageLabel,orderProgressLabels} from './order-status.js';
 import {parseTimestamp} from './timestamp.js?v=20261102.3';
@@ -10,7 +10,6 @@ import {createPushClient} from './push.js?v=20261102.1';
 import {classifyFollowUp,awaitingPurchase,notificationChoices,notificationTypes} from './order-followup.js?v=20261111.1';
 import {filterTransactions,transactionTotals,transactionAmount,personCash} from './transaction-summary.js?v=20261103.2';
 import {openEmailPreview} from './email-preview.js?v=20261114.1';
-import {ruleLinkText} from './rule-copy.js?v=20261109.5';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
 const deviceStorage={get(key){try{return localStorage.getItem(key);}catch{return null;}},set(key,value){try{localStorage.setItem(key,value);return true;}catch{return false;}},remove(key){try{localStorage.removeItem(key);}catch{}}};
 const icon=name=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
@@ -139,7 +138,7 @@ function render(){
       const name=article.querySelector('[data-order]'),o=orders.get(name?.dataset.order);
       if(o?.lines?.length){
         const area=document.createElement('div');name.before(area);area.append(name);
-        entries.push({article,area,order:{id:o.id,name:o.name,email:o.email,total:o.total,lines:o.lines.map(l=>({name:l.name,quantity:l.quantity,price:l.price,noRulesRequired:l.noRulesRequired}))}});
+        entries.push({article,area,order:exportOrder(o)});
       }
     }
     globalThis.D77OrderImage.mount(root,entries,{season:data.season,share:true,dock:$('#nav'),onEmail:emailPreview});
@@ -187,6 +186,8 @@ function manageSeasons(){showSeasonSettings({demo,getState:()=>seasonState,api,o
 });}
 function go(target,newFilter='all'){filter=newFilter;search='';sort='new';transactionPerson='all';if(page===target)render();else location.hash=target;}
 function openDialog(title,body,snapshot=data){dialogSnapshot=snapshot;$('#detail-title').textContent=title;$('#detail-body').innerHTML=body;icons();if(!$('#detail').open)$('#detail').showModal();}
+function exportOrder(o){return {id:o.id,name:o.name,email:o.email,total:o.total,lines:o.lines.map(l=>({name:l.name,quantity:l.quantity,price:l.price,noRulesRequired:l.noRulesRequired}))};}
+function orderImagePreview(order){globalThis.D77OrderImage.open([exportOrder(order)],{season:data.season,share:true,onEmail:emailPreview});}
 async function emailPreview(orders){
  if(emailPreviewBusy)return;emailPreviewBusy=true;
  const generation=authGeneration,season=data?.season,sourceUpdatedAt=data?.updatedAt,products=data?.products||[];
@@ -201,19 +202,16 @@ async function emailPreview(orders){
 }
 function handleWidgetLink(){
  if(widgetLinkHandled||!data||busy)return;widgetLinkHandled=true;
- const params=new URLSearchParams(location.search),id=params.get('widgetOrder'),name=params.get('widgetProduct'),action=params.get('widgetAction');
+ const params=new URLSearchParams(location.search),id=params.get('widgetOrder'),name=params.get('widgetProduct');
  if(!id&&!name)return;
- if(id){const order=data.orders.find(o=>o.id===id);if(!order){setError('此動態的顧客訂單不在目前季別，請確認季別。');return;}if(action==='email')emailPreview([order]);else orderDetail(id);}
+ if(id){const order=data.orders.find(o=>o.id===id);if(!order){setError('此動態的顧客訂單不在目前季別，請確認季別。');return;}orderDetail(id);}
  else if(name){
   const product=data.products.find(p=>p.name===name);if(!product){setError('此品項不在目前季別，請確認季別。');return;}
-  if(action==='copy-rules'){
-   const text=ruleLinkText([product]);openDialog('規則連結',text?`<textarea class="rule-copy-text" aria-label="規則連結文字">${esc(text)}</textarea><button type="button" id="widget-copy-rules">複製文字</button><p id="widget-copy-status" role="status"></p>`:empty('目前沒有可用的中文規則連結'));
-   $('#widget-copy-rules')?.addEventListener('click',async()=>{const field=$('.rule-copy-text');try{await navigator.clipboard.writeText(field.value);$('#widget-copy-status').textContent='已複製';}catch{field.focus();field.select();$('#widget-copy-status').textContent='請手動複製';}});
-  }else productDetail(name,page==='rules');
+  productDetail(name,page==='rules');
  }
 }
 function orderDetail(id){const o=data.orders.find(o=>o.id===id);if(!o)return;
-  openDialog(o.name,`<div class="section-actions"><button type="button" data-email-order="${esc(o.id)}">${icon('mail')}Email 預覽</button></div><div class="badges">${badge(o.status,o.status==='已出貨'?'good':'warn')}${badge('總額 '+money(o.total))}${progressBadges(o)}</div><p class="read-only-note">${esc(o.time||'')} ${o.sourceRow?'· 來源列 '+o.sourceRow:''}</p>${o.lines.map(l=>{
+  openDialog(o.name,`<div class="section-actions"><button type="button" data-email-order="${esc(o.id)}">${icon('mail')}Email 預覽</button><button type="button" data-image-order="${esc(o.id)}">${icon('image')}訂單圖片預覽</button></div><div class="badges">${badge(o.status,o.status==='已出貨'?'good':'warn')}${badge('總額 '+money(o.total))}${progressBadges(o)}</div><p class="read-only-note">${esc(o.time||'')} ${o.sourceRow?'· 來源列 '+o.sourceRow:''}</p>${o.lines.map(l=>{
     const p=data.products.find(p=>p.name===l.name);return `<div class="detail-line"><strong>${esc(l.name)}</strong><span class="amount">${num(l.quantity)} × ${money(l.price)}</span><div class="badges">${['purchased','shipped','mailed'].map(field=>badge(stageLabel(l,field),l.evidence?.[field]==='conflict'?'bad':l[field]>0?'good':'')).join('')}${badge(p?.rules.length?'已翻譯':'未翻譯',p?.rules.length?'good':'warn')}</div>${links(p)}</div>`;}).join('')}${o.issues?.length?`<p class="notice">${esc(o.issues.join('；'))}</p>`:''}`);
 }
 function productDetail(name,rulesOnly=false){const p=data.products.find(p=>p.name===name);if(!p)return;
@@ -316,6 +314,7 @@ document.addEventListener('click',async e=>{
   else if(b.dataset.filter){filter=b.dataset.filter;render();}
   else if(b.dataset.order)orderDetail(b.dataset.order);
   else if(b.dataset.emailOrder){const order=data.orders.find(o=>o.id===b.dataset.emailOrder);if(order)emailPreview([order]);}
+  else if(b.dataset.imageOrder){const order=data.orders.find(o=>o.id===b.dataset.imageOrder);if(order)orderImagePreview(order);}
   else if(b.dataset.transaction)transactionDetail(b.dataset.transaction,b.dataset.person||'all',b.closest('#detail-body')?dialogSnapshot:data);
   else if(b.dataset.shipmentProduct)shipmentDetail(b.dataset.shipmentProduct,b.dataset.condition,dialogSnapshot||data);
   else if(b.id==='inventory-reconcile')openDialog('金流出貨品項待核對',(data.unmatchedShipments||[]).map(t=>`<div class="detail-line"><strong>${esc(t.name||'品項空白')}</strong><p>${t.used?'二手':'全新'} · 增減數量 ${num(t.quantity)} · 金流來源列 ${esc(t.sourceRow)}</p><p class="notice">${esc(({ambiguous:'品項名稱對應到多個品項，未納入出貨量',unmatched:'找不到對應本季品項，未納入出貨量'})[t.reason]||t.reason||'找不到唯一對應本季品項，未納入品項出貨量')}</p></div>`).join(''));

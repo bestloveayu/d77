@@ -1,4 +1,4 @@
-param([string]$SdkRoot = "", [string]$JavaHome = "", [string]$Version = '0.3.3', [int]$VersionCode = 6)
+param([string]$SdkRoot = "", [string]$JavaHome = "", [string]$Version = '0.3.4', [int]$VersionCode = 7)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 if (!$SdkRoot) { $SdkRoot = Join-Path (Split-Path $root) '.android-tools/sdk' }
@@ -48,5 +48,9 @@ Get-FileHash -Algorithm SHA256 -LiteralPath "$root/dist/東77桌面小工具_${V
 & "$JavaHome/bin/javac.exe" -encoding UTF-8 --release 8 -d "$build/tests" "$root/src/tw/d77/widget/Shortcut.java" "$root/tests/ShortcutTest.java"
 Check
 & "$JavaHome/bin/java.exe" -cp "$build/tests" ShortcutTest
+Check
+& "$JavaHome/bin/javac.exe" -encoding UTF-8 --release 8 -d "$build/tests" "$root/tests/RowStructureTest.java"
+Check
+& "$JavaHome/bin/java.exe" -cp "$build/tests" RowStructureTest $root
 Check
 

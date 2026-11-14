@@ -11,7 +11,7 @@ const assert=require('node:assert/strict'),{spawn}=require('node:child_process')
   await page.route('https://accounts.google.com/**',r=>r.abort());
   const lines=[{name:'企鵝之路',quantity:1,price:100,purchased:1,shipped:1,mailed:0},{name:'維新前夜',quantity:1,price:200,purchased:1,shipped:1,mailed:0}];
   const orders=[{id:'order-a',name:'王小明',total:300,time:'2026/11/14 10:00',lines,status:'已出貨',issues:[]},{id:'order-b',name:'王小明',total:100,time:'2026/11/14 10:00',lines:[lines[0]],status:'已出貨',issues:[]},{id:'order-c',name:'陳小華',total:100,time:'2026/11/14 10:00',lines:[lines[0]],status:'已出貨',issues:[]}];
-  const products=lines.map(l=>({name:l.name,ordered:3,stock:3,rules:[{name:l.name+'_中文規則.pdf',url:'https://example.com/'+encodeURIComponent(l.name)}],customers:[]}));
+  const products=lines.map(l=>({name:l.name,ordered:3,stock:3,rules:[{name:l.name+'_中文規則.pdf',url:'https://example.com/'+encodeURIComponent(l.name)}],customers:[{id:'order-a',name:'王小明',mailed:0}]}));
   await page.route('https://*.workers.dev/**',async r=>{
    const path=new URL(r.request().url()).pathname;let value={};
    if(path==='/seasons')value={defaultSeason:'2026秋',seasons:[{season:'2026秋'}]};
@@ -22,8 +22,20 @@ const assert=require('node:assert/strict'),{spawn}=require('node:child_process')
    await r.fulfill({json:value});
   });
   await page.goto('http://127.0.0.1:8797/#orders');await page.waitForFunction(()=>window.fixtureLogin);await page.evaluate(()=>window.fixtureLogin({credential:'fixture'}));await page.locator('.order-name-check').first().waitFor();
+  await page.locator('[data-order="order-a"]').first().click();
+  assert.equal(await page.locator('#detail-body [data-image-order="order-a"]').count(),1);
+  for(const width of [320,390,1280]){
+   await page.setViewportSize({width,height:900});
+   assert(await page.locator('#detail').evaluate(d=>d.scrollWidth<=d.clientWidth+1));
+   const buttons=await page.locator('#detail-body .section-actions button').evaluateAll(ns=>ns.map(n=>({w:n.scrollWidth,c:n.clientWidth,y:n.getBoundingClientRect().top})));
+   assert(buttons.every(b=>b.w<=b.c+1));assert.equal(buttons[0].y,buttons[1].y);
+  }
+  await page.setViewportSize({width:390,height:900});
+  await page.locator('#detail-body [data-image-order="order-a"]').click();
+  assert.equal(await page.locator('.order-image-editor .order-image-edit-row').count(),2);
+  await page.locator('.order-image-dialog [data-close]').click();await page.locator('#detail-close').click();
   await page.locator('.order-name-check').nth(0).check();await page.locator('.order-name-check').nth(1).check();await page.locator('.order-name-check').nth(2).check();
-  await page.locator('.order-export-dock button').filter({hasText:'下載所選圖片'}).click();
+  await page.locator('.order-export-dock button').filter({hasText:'訂單圖片預覽'}).click();
   await page.locator('.order-image-editor .order-image-shortage').nth(1).click();
   await page.locator('.order-image-actions button').filter({hasText:'Email 預覽'}).click();
   const dialog=page.locator('.email-preview-dialog').filter({has:page.locator('[data-body]')});await dialog.waitFor();
@@ -41,8 +53,10 @@ const assert=require('node:assert/strict'),{spawn}=require('node:child_process')
   await dialog.locator('[data-to]').fill('changed@example.com');await dialog.locator('[data-ack]').check();assert.equal(await dialog.locator('[data-report]').isDisabled(),true);
   for(const width of [320,390,1280]){await page.setViewportSize({width,height:900});await dialog.evaluate(d=>d.scrollTop=0);assert(await dialog.evaluate(d=>d.scrollWidth<=d.clientWidth+1));await page.screenshot({path:`test-results/email-preview-${width}.png`});}
   await page.goto('http://127.0.0.1:8797/?widgetOrder=order-a&widgetAction=email#orders');await page.waitForFunction(()=>window.fixtureLogin);await page.evaluate(()=>window.fixtureLogin({credential:'fixture'}));
-  await page.locator('.email-preview-dialog [data-body]').waitFor();assert.equal(await page.locator('.email-preview-dialog [data-to]').inputValue(),'a@example.com');assert.equal(reports.length,1);
-  await page.goto('http://127.0.0.1:8797/?widgetProduct='+encodeURIComponent('企鵝之路')+'&widgetAction=copy-rules#rules');await page.waitForFunction(()=>window.fixtureLogin);await page.evaluate(()=>window.fixtureLogin({credential:'fixture'}));await page.locator('#widget-copy-rules').waitFor();assert.match(await page.locator('.rule-copy-text').inputValue(),/企鵝之路/);
+  await page.locator('#detail[open]').waitFor();assert.equal(await page.locator('#detail-title').innerText(),'王小明');assert.equal(await page.locator('.email-preview-dialog').count(),0);assert.equal(reports.length,1);
+  await page.goto('http://127.0.0.1:8797/?widgetProduct='+encodeURIComponent('企鵝之路')+'&widgetAction=copy-rules#rules');await page.waitForFunction(()=>window.fixtureLogin);await page.evaluate(()=>window.fixtureLogin({credential:'fixture'}));await page.locator('#detail[open]').waitFor();assert.equal(await page.locator('#detail-title').innerText(),'企鵝之路');assert.equal(await page.locator('#widget-copy-rules').count(),0);
+  await page.goto('http://127.0.0.1:8797/?widgetOrder=order-a&widgetAction=view#orders');await page.waitForFunction(()=>window.fixtureLogin);await page.evaluate(()=>window.fixtureLogin({credential:'fixture'}));await page.locator('#detail[open]').waitFor();assert.equal(await page.locator('#detail-title').innerText(),'王小明');assert.equal(await page.locator('.email-preview-dialog').count(),0);
+  await page.goto('http://127.0.0.1:8797/?widgetProduct='+encodeURIComponent('企鵝之路')+'&widgetAction=view#rules');await page.waitForFunction(()=>window.fixtureLogin);await page.evaluate(()=>window.fixtureLogin({credential:'fixture'}));await page.locator('#detail[open]').waitFor();assert.equal(await page.locator('#detail-title').innerText(),'企鵝之路');assert.equal(await page.locator('#widget-copy-rules').count(),0);assert.equal(await page.locator('#detail-body [data-order="order-a"]').count(),1);
   await page.evaluate(async()=>{const {openEmailPreview}=await import('/email-preview.js');window.reportAttempts=[];openEmailPreview([{id:'a',name:'測試',email:'test@example.com',lines:[{name:'甲',quantity:1,price:100}]}],{products:[{name:'甲',rules:[{url:'https://example.com/rule'}]}],report:async payload=>{window.reportAttempts.push(structuredClone(payload));if(window.reportAttempts.length===1)throw Error('模擬逾時');}});});
   const retry=page.locator('.email-preview-dialog');await retry.locator('[data-open]').evaluate(el=>{el.addEventListener('click',e=>e.preventDefault());el.click();});await retry.locator('[data-ack]').check();await retry.locator('[data-report]').click();await page.waitForFunction(()=>document.querySelector('.email-preview-dialog [role=status]')?.textContent.includes('模擬逾時'));
   assert.equal(await retry.locator('[data-rules]').isDisabled(),true);assert.equal(await retry.locator('[data-body]').isDisabled(),true);await retry.locator('[data-report]').click();await page.waitForFunction(()=>window.reportAttempts.length===2);assert.deepEqual(await page.evaluate(()=>window.reportAttempts[0]),await page.evaluate(()=>window.reportAttempts[1]));
