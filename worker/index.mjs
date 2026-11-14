@@ -4,6 +4,7 @@ import { changes, digest } from './model.mjs';
 import {SeasonRegistry} from './seasons.mjs';
 import {PushService,defaultPreferences} from './browser-push.mjs';
 import {displayEvent} from './notification-display.mjs';
+import {dedupeEvents} from './event-dedupe.mjs';
 import {notificationTypes} from '../public/order-followup.js';
 import {WidgetStore,widgetSummary} from './widget.mjs';
 import {recordMailReport,listMailReports,mailRecipients} from './mail-reports.mjs';
@@ -119,7 +120,7 @@ export class BoardStore {
       await this.ctx.storage.put('lastAttempt',Date.now());
       try{
         const {snapshot:next,recipients}=await collect(this.env,sourceConfig,{includeRecipients:true}),previous=await this.snapshot();
-        const incoming=await changes(previous,next);
+        const incoming=dedupeEvents(await changes(previous,next));
         await this.ctx.storage.transaction(async tx=>{
           const ids=await tx.get('event-index')||[];
           const existing=(await Promise.all(ids.map(id=>tx.get('event:'+id)))).filter(Boolean);
@@ -221,7 +222,7 @@ export class BoardStore {
     if(path==='/notifications'){
       const read=new Set(await this.ctx.storage.get('read:'+user)||[]);
       const events=await this.events(),snapshot=await this.snapshot();
-      return json({events:events.map(e=>({...displayEvent(e,snapshot),read:read.has(e.id)})),pushError:await this.ctx.storage.get('pushError')||null});
+      return json({events:dedupeEvents(events).map(e=>({...displayEvent(e,snapshot),read:read.has(e.id)||(e.relatedEventIds||[]).some(id=>read.has(id))})),pushError:await this.ctx.storage.get('pushError')||null});
     }
     if(path==='/read'){
       const body=await request.json(),events=await this.events();
@@ -243,4 +244,3 @@ export class BoardStore {
     return json({error:'找不到端點'},404);
   }
 }
-

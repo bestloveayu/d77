@@ -1,6 +1,7 @@
 import {buildPushPayload} from '@block65/webcrypto-web-push';
 import {digest} from './model.mjs';
 import {notificationTypes} from '../public/order-followup.js';
+import {dedupeEvents} from './event-dedupe.mjs';
 
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const defaults={pushEnabled:false,quiet:true,quietStart:22,quietEnd:8,types:notificationTypes};
@@ -86,7 +87,7 @@ export class PushService{
       try{
         if(!allowed.includes(record.email)){await this.storage.delete(key);continue;}
         const prefs=await preferences(record.email),now=Date.now();
-        const pending=new Map([...(record.pending||[]),...events.map(e=>({id:e.id,type:e.type,time:e.time,payload:notificationPayload(e)}))].map(e=>[e.id,e]));
+        const pending=new Map([...(record.pending||[]),...dedupeEvents(events).map(e=>({id:e.id,type:e.type,time:e.time,payload:notificationPayload(e)}))].map(e=>[e.id,e]));
         record.pending=prefs?.pushEnabled?[...pending.values()].filter(e=>Date.parse(e.time)>record.created&&Date.parse(e.time)>now-86400000&&!record.delivered?.includes(e.id)&&prefs.types?.includes(e.type)).slice(-150):[];
         await this.storage.put(key,record);
         const eligible=eligibleEvents(record.pending,prefs,record.created);
@@ -105,4 +106,3 @@ export class PushService{
     }
   }
 }
-

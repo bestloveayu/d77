@@ -1,6 +1,7 @@
 import {awaitingPurchase,classifyFollowUp} from '../public/order-followup.js';
 import {widgetFacts,orderFacts,itemFacts,pendingFacts} from './widget-facts.mjs';
 import {parseTimestamp} from '../public/timestamp.js';
+import {dedupeEvents} from './event-dedupe.mjs';
 const hex=b=>Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
 const hash=async s=>hex(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))));
 const random=n=>hex(crypto.getRandomValues(new Uint8Array(n)));
@@ -95,7 +96,7 @@ export function widgetSummary(snapshot,events=[],stale=false,error=null){
       matching.sort((a,b)=>key==='shortage'?(b.shortage||0)+(b.usedShortage||0)-(a.shortage||0)-(a.usedShortage||0):(parseTimestamp(b.time)||0)-(parseTimestamp(a.time)||0));
       return matching.slice(0,8).map(o=>({title:o.name+' · '+title,body:key==='shortage'?'全新缺 '+(o.shortage??'?')+' 盒；二手缺 '+(o.usedShortage??'?')+' 盒；全新庫存 '+(o.stock??'?')+' 盒':key==='awaitingRules'?pendingFacts(o,'rules-pending').body:key==='awaitingPurchase'?itemFacts(o):pendingFacts(o,'registration').body,page,time:null,...shortcut(snapshot,{type:key==='shortage'?'shortage':key==='awaitingRules'?'rules-pending':key==='awaitingPurchase'?'order':'registration',target:key==='shortage'?{name:o.name}:{id:o.id}})}));
     }),
-    events:events.filter(e=>types[e.type]).slice(0,32).map(e=>{
+    events:dedupeEvents(events).filter(e=>types[e.type]).slice(0,32).map(e=>{
       const facts=widgetFacts(snapshot,e)||e.widgetFacts;
       let body=String(facts?(e.widgetFacts||e.activityFacts||e.type==='shortage'?'':'目前資料：')+facts.body:e.type==='activity'&&e.title?.includes('（手機）')?e.detail:'此筆舊動態沒有詳細資料');
       if(['rules-pending','order'].includes(e.type))body=itemOnlyLegacy(body);
