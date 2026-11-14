@@ -43,7 +43,15 @@ public final class FeedService extends RemoteViewsService {
             row.setTextViewText(R.id.row_time,time(item.optString("time")));
             String icon=title.contains("規則")?"ic_book":title.contains("寄")?"ic_mail":title.contains("出貨")?"ic_package":title.contains("庫存")||title.contains("缺貨")||title.contains("進貨")?"ic_box":"ic_task";
             row.setImageViewResource(R.id.row_icon,context.getResources().getIdentifier(icon+(dark?"_dark":""),"drawable",context.getPackageName()));
-            row.setOnClickFillInIntent(R.id.row,new Intent().putExtra("page",OpenActivity.page(item.optString("page"))));
+            JSONObject target=item.optJSONObject("target");
+            Shortcut shortcut=Shortcut.resolve(item.optString("type"),target==null?"":target.optString("id"),target==null?"":target.optString("name"),item.optString("page"),item.optString("filter"));
+            Intent link=new Intent().putExtra("page",shortcut.page).putExtra("filter",shortcut.filter).putExtra("order",shortcut.order).putExtra("product",shortcut.product).putExtra("action",shortcut.action);
+            row.setOnClickFillInIntent(R.id.row,link);
+            row.setViewVisibility(R.id.row_action,shortcut.label.isEmpty()?android.view.View.GONE:android.view.View.VISIBLE);
+            row.setTextViewText(R.id.row_action,shortcut.label);
+            row.setTextColor(R.id.row_action,foreground);
+            row.setContentDescription(R.id.row_action,shortcut.label+"："+title);
+            row.setOnClickFillInIntent(R.id.row_action,link);
             row.setContentDescription(R.id.row,title+"，"+body);
             return row;
         }
@@ -62,3 +70,4 @@ public final class FeedService extends RemoteViewsService {
         private static String time(String text){try{return java.time.Instant.parse(text).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"));}catch(Exception ignored){return "";}}
     }
 }
+

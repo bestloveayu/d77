@@ -1,7 +1,7 @@
 import {demoSnapshot,demoEvents} from './demo.js';
 import {mountRuleCopy,resetRuleCopy} from './rule-copy.js?v=20261109.5';
 import {showSeasonSettings} from './season-settings.js';
-import {mountWidgetSettings} from './widget-settings.js?v=20261106.1';
+import {mountWidgetSettings} from './widget-settings.js?v=20261114.1';
 import {SOURCE_DEFAULTS} from './season-config.js';
 import {stageLabel,orderProgressLabels} from './order-status.js';
 import {parseTimestamp} from './timestamp.js?v=20261102.3';
@@ -9,6 +9,8 @@ import {installSwipe} from './swipe.js?v=20261102.3';
 import {createPushClient} from './push.js?v=20261102.1';
 import {classifyFollowUp,awaitingPurchase,notificationChoices,notificationTypes} from './order-followup.js?v=20261111.1';
 import {filterTransactions,transactionTotals,transactionAmount,personCash} from './transaction-summary.js?v=20261103.2';
+import {openEmailPreview} from './email-preview.js?v=20261114.1';
+import {ruleLinkText} from './rule-copy.js?v=20261109.5';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
 const deviceStorage={get(key){try{return localStorage.getItem(key);}catch{return null;}},set(key,value){try{localStorage.setItem(key,value);return true;}catch{return false;}},remove(key){try{localStorage.removeItem(key);}catch{}}};
 const icon=name=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
@@ -24,6 +26,7 @@ let data=null,events=[],token='',account='',demo=false,stale=false,busy=false,er
 let selectedSeason=deviceStorage.get('d77-season')||'',requestEpoch=0,authGeneration=0,composingSearch=false;
 let seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};
 let transactionPerson='all',metricNavigationPending=false,dialogSnapshot=null;
+let widgetLinkHandled=false,emailPreviewBusy=false;
 const demoEventStore=new Map();
 function demoSources(){return {revision:0,defaultSeason:'2026秋',canManage:true,seasons:['2026秋','2026春'].map(season=>({season,config:{season,spreadsheetId:'sample-book',catalogSheet:season+'品項統計',responseSheet:season+'預購回應',rulesFolderId:'sample-folder',...SOURCE_DEFAULTS,aliases:{},productColumns:{}},testedAt:new Date().toISOString()}))};}
 function demoData(season){const value=demoSnapshot();value.season=season;if(season!=='2026秋'){value.orders=[];value.products=[];value.summary={orders:0,attention:0,shortages:0,unknownStock:0,rulesReady:0,rulesTotal:0};value.finance={income:0,cost:0,profit:0};}return value;}
@@ -136,10 +139,10 @@ function render(){
       const name=article.querySelector('[data-order]'),o=orders.get(name?.dataset.order);
       if(o?.lines?.length){
         const area=document.createElement('div');name.before(area);area.append(name);
-        entries.push({article,area,order:{name:o.name,total:o.total,lines:o.lines.map(l=>({name:l.name,quantity:l.quantity,price:l.price}))}});
+        entries.push({article,area,order:{id:o.id,name:o.name,email:o.email,total:o.total,lines:o.lines.map(l=>({name:l.name,quantity:l.quantity,price:l.price,noRulesRequired:l.noRulesRequired}))}});
       }
     }
-    globalThis.D77OrderImage.mount(root,entries,{season:data.season,share:true,dock:$('#nav')});
+    globalThis.D77OrderImage.mount(root,entries,{season:data.season,share:true,dock:$('#nav'),onEmail:emailPreview});
   }
   if(page==='rules')mountRuleCopy($('#view'),$('#nav'),data.products,openDialog,esc);
   chrome();icons();
@@ -175,17 +178,42 @@ async function refresh(force=false){
     if(result.snapshot){if(result.snapshot.season!==requested)throw new Error('回應季別不一致，未顯示資料');data=result.snapshot;}else data=null;
     const notifications=await api('/notifications');if(epoch!==requestEpoch||requested!==selectedSeason)return;events=notifications.events;
   }catch(e){if(epoch===requestEpoch){error=e.name==='TimeoutError'?'連線逾時，保留本季上次成功資料':e.message;stale=true;}}
-  finally{if(epoch===requestEpoch){busy=false;render();}}
+  finally{if(epoch===requestEpoch){busy=false;render();handleWidgetLink();}}
 }
-async function changeSeason(season){requestEpoch++;busy=false;selectedSeason=season;deviceStorage.set('d77-season',season);data=null;events=[];filter='all';search='';sort='new';transactionPerson='all';error='';$('#detail').close();await refresh();}
+async function changeSeason(season){requestEpoch++;busy=false;document.querySelectorAll('.email-preview-dialog,.order-image-dialog').forEach(d=>d.close());selectedSeason=season;deviceStorage.set('d77-season',season);data=null;events=[];filter='all';search='';sort='new';transactionPerson='all';error='';$('#detail').close();await refresh();}
 function manageSeasons(){showSeasonSettings({demo,getState:()=>seasonState,api,openDialog,icons,
   saveDemo:({config,makeDefault})=>{seasonState={...seasonState,revision:seasonState.revision+1,defaultSeason:makeDefault||!seasonState.defaultSeason?config.season:seasonState.defaultSeason,seasons:[...seasonState.seasons.filter(s=>s.season!==config.season),{season:config.season,config,testedAt:new Date().toISOString()}]};},
   onSaved:async season=>{if(!demo)seasonState=await api('/seasons');await changeSeason(season);}
 });}
 function go(target,newFilter='all'){filter=newFilter;search='';sort='new';transactionPerson='all';if(page===target)render();else location.hash=target;}
 function openDialog(title,body,snapshot=data){dialogSnapshot=snapshot;$('#detail-title').textContent=title;$('#detail-body').innerHTML=body;icons();if(!$('#detail').open)$('#detail').showModal();}
+async function emailPreview(orders){
+ if(emailPreviewBusy)return;emailPreviewBusy=true;
+ const generation=authGeneration,season=data?.season,sourceUpdatedAt=data?.updatedAt,products=data?.products||[];
+ const loading=document.createElement('dialog');loading.className='email-preview-dialog';loading.textContent='正在準備 Email 收件人與規則連結…';document.body.append(loading);loading.showModal();
+ try{
+  const contacts=demo?orders.map(o=>({id:o.id,name:o.name,email:o.email||''})):(await api('/mail-recipients',{orderIds:[...new Set(orders.map(o=>o.id))],expectedUpdatedAt:sourceUpdatedAt})).recipients;
+  if(generation!==authGeneration||data?.season!==season||data?.updatedAt!==sourceUpdatedAt)throw Error('來源已更新，請重新開啟 Email 預覽；不需重複寄信。');
+  const enriched=orders.map(o=>{const c=contacts.find(c=>c.id===o.id);if(!c||c.name!==o.name)throw Error('顧客身分已改變，請重新整理');return {...o,email:c.email};});
+  return openEmailPreview(enriched,{products,season,isCurrent:()=>generation===authGeneration&&data?.season===season&&data?.updatedAt===sourceUpdatedAt,
+  report:demo?undefined:async body=>{if(generation!==authGeneration||data?.season!==season)throw Error('登入或季別已變更，請重新預覽');await api('/mail-report',{...body,sourceUpdatedAt});try{const value=await api('/notifications');if(generation===authGeneration&&data?.season===season)events=value.events;}catch{/* The report already succeeded; a later notification read must not trigger another write. */}}
+ });}catch(e){setError(e.message);}finally{loading.close();loading.remove();emailPreviewBusy=false;}
+}
+function handleWidgetLink(){
+ if(widgetLinkHandled||!data||busy)return;widgetLinkHandled=true;
+ const params=new URLSearchParams(location.search),id=params.get('widgetOrder'),name=params.get('widgetProduct'),action=params.get('widgetAction');
+ if(!id&&!name)return;
+ if(id){const order=data.orders.find(o=>o.id===id);if(!order){setError('此動態的顧客訂單不在目前季別，請確認季別。');return;}if(action==='email')emailPreview([order]);else orderDetail(id);}
+ else if(name){
+  const product=data.products.find(p=>p.name===name);if(!product){setError('此品項不在目前季別，請確認季別。');return;}
+  if(action==='copy-rules'){
+   const text=ruleLinkText([product]);openDialog('規則連結',text?`<textarea class="rule-copy-text" aria-label="規則連結文字">${esc(text)}</textarea><button type="button" id="widget-copy-rules">複製文字</button><p id="widget-copy-status" role="status"></p>`:empty('目前沒有可用的中文規則連結'));
+   $('#widget-copy-rules')?.addEventListener('click',async()=>{const field=$('.rule-copy-text');try{await navigator.clipboard.writeText(field.value);$('#widget-copy-status').textContent='已複製';}catch{field.focus();field.select();$('#widget-copy-status').textContent='請手動複製';}});
+  }else productDetail(name,page==='rules');
+ }
+}
 function orderDetail(id){const o=data.orders.find(o=>o.id===id);if(!o)return;
-  openDialog(o.name,`<div class="badges">${badge(o.status,o.status==='已出貨'?'good':'warn')}${badge('總額 '+money(o.total))}${progressBadges(o)}</div><p class="read-only-note">${esc(o.time||'')} ${o.sourceRow?'· 來源列 '+o.sourceRow:''}</p>${o.lines.map(l=>{
+  openDialog(o.name,`<div class="section-actions"><button type="button" data-email-order="${esc(o.id)}">${icon('mail')}Email 預覽</button></div><div class="badges">${badge(o.status,o.status==='已出貨'?'good':'warn')}${badge('總額 '+money(o.total))}${progressBadges(o)}</div><p class="read-only-note">${esc(o.time||'')} ${o.sourceRow?'· 來源列 '+o.sourceRow:''}</p>${o.lines.map(l=>{
     const p=data.products.find(p=>p.name===l.name);return `<div class="detail-line"><strong>${esc(l.name)}</strong><span class="amount">${num(l.quantity)} × ${money(l.price)}</span><div class="badges">${['purchased','shipped','mailed'].map(field=>badge(stageLabel(l,field),l.evidence?.[field]==='conflict'?'bad':l[field]>0?'good':'')).join('')}${badge(p?.rules.length?'已翻譯':'未翻譯',p?.rules.length?'good':'warn')}</div>${links(p)}</div>`;}).join('')}${o.issues?.length?`<p class="notice">${esc(o.issues.join('；'))}</p>`:''}`);
 }
 function productDetail(name,rulesOnly=false){const p=data.products.find(p=>p.name===name);if(!p)return;
@@ -259,6 +287,7 @@ async function settings(){
 }
 async function logout(cleanup=true){
   const oldToken=token,remove=cleanup!==false&&!demo&&!!token;authGeneration++;
+  document.querySelectorAll('.email-preview-dialog,.order-image-dialog').forEach(d=>d.close());
   dialogSnapshot=null;transactionPerson='all';metricNavigationPending=false;
   deviceStorage.remove('d77-session');
   requestEpoch++;busy=false;token='';account='';data=null;events=[];demo=false;seasonState={revision:0,defaultSeason:'',seasons:[],canManage:false};clearInterval(timer);$('#detail').close();$('#workspace').hidden=true;$('#nav').hidden=true;$('#login').hidden=false;$('#view').replaceChildren();$('#login-status').textContent='已登出';window.google?.accounts.id.disableAutoSelect();icons();
@@ -286,6 +315,7 @@ document.addEventListener('click',async e=>{
   }
   else if(b.dataset.filter){filter=b.dataset.filter;render();}
   else if(b.dataset.order)orderDetail(b.dataset.order);
+  else if(b.dataset.emailOrder){const order=data.orders.find(o=>o.id===b.dataset.emailOrder);if(order)emailPreview([order]);}
   else if(b.dataset.transaction)transactionDetail(b.dataset.transaction,b.dataset.person||'all',b.closest('#detail-body')?dialogSnapshot:data);
   else if(b.dataset.shipmentProduct)shipmentDetail(b.dataset.shipmentProduct,b.dataset.condition,dialogSnapshot||data);
   else if(b.id==='inventory-reconcile')openDialog('金流出貨品項待核對',(data.unmatchedShipments||[]).map(t=>`<div class="detail-line"><strong>${esc(t.name||'品項空白')}</strong><p>${t.used?'二手':'全新'} · 增減數量 ${num(t.quantity)} · 金流來源列 ${esc(t.sourceRow)}</p><p class="notice">${esc(({ambiguous:'品項名稱對應到多個品項，未納入出貨量',unmatched:'找不到對應本季品項，未納入出貨量'})[t.reason]||t.reason||'找不到唯一對應本季品項，未納入品項出貨量')}</p></div>`).join(''));

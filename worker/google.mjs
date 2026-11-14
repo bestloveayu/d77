@@ -1,5 +1,5 @@
 import { SignJWT, importPKCS8, createRemoteJWKSet, jwtVerify } from 'jose';
-import { compose, decodeTeam } from './model.mjs';
+import { compose, decodeTeam, parseResponses } from './model.mjs';
 const keys=createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 let access;
 export async function authenticate(request,env) {
@@ -28,7 +28,7 @@ async function get(url,token) {
   if(!response.ok)throw new Error(response.status===403?'讀取權限不足，請將資料來源以檢視者分享給服務帳號':response.status===404?'找不到雲端分頁或資料夾':response.status===429?'Google 讀取額度暫時不足':'Google 讀取失敗（'+response.status+'）');
   return response.json();
 }
-export async function collect(env,sourceConfig) {
+export async function collect(env,sourceConfig,options={}) {
   const config=sourceConfig||JSON.parse(env.SHEET_CONFIG||'{}');
   if(!/^\d{4}[春秋]$/.test(config.season)||['spreadsheetId','catalogSheet','responseSheet','ledgerSheet','rulesFolderId'].some(k=>!config[k]||config[k].includes('REPLACE')))throw new Error('尚未完成雲端來源設定');
   const token=await serviceToken(env);
@@ -48,5 +48,12 @@ export async function collect(env,sourceConfig) {
     if(rules.length>10000)throw new Error('規則檔案超過看板讀取上限');
   }while(pageToken);
   const [catalog,responses,ledger,team,documents]=data.valueRanges.map(v=>v.values||[]);
-  return compose({catalog,responses,ledger,team:decodeTeam(team),documents:decodeTeam(documents),rules},config);
+  const docs=decodeTeam(documents);
+  const snapshot=await compose({catalog,responses,ledger,team:decodeTeam(team),documents:docs,rules},config);
+  if(!options.includeRecipients)return snapshot;
+  const orders=await parseResponses(responses,config,snapshot.products);
+  const recipients=orders.map(o=>({id:o.id,name:o.name,email:o.email}));
+  for(const doc of docs.documents.filter(d=>d.season===config.season&&d.kind==='manualOrder'&&!d.deleted))recipients.push({id:'manual-'+doc.id,name:doc.body.name,email:String(doc.body.email||'').trim().toLowerCase()});
+  return {snapshot,recipients};
 }
+

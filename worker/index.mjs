@@ -6,6 +6,7 @@ import {PushService,defaultPreferences} from './browser-push.mjs';
 import {displayEvent} from './notification-display.mjs';
 import {notificationTypes} from '../public/order-followup.js';
 import {WidgetStore,widgetSummary} from './widget.mjs';
+import {recordMailReport,listMailReports,mailRecipients} from './mail-reports.mjs';
 const json=(body,status=200,headers={})=>Response.json(body,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
 export const seasonObjectName=entry=>'season:'+entry.season+':'+entry.configDigest;
 async function seasonTarget(env,season,user){
@@ -22,7 +23,7 @@ export function createWorker(authenticateGoogle=authenticate){return {
     if(origin&&origin!==env.ALLOWED_ORIGIN)return json({error:'來源不允許'},403);
     if(request.method==='OPTIONS')return new Response(null,{status:204,headers:cors});
     const url=new URL(request.url),path=url.pathname;
-    if(!['/session','/session/logout','/snapshot','/refresh','/notifications','/read','/preferences','/push/status','/push/device','/seasons','/seasons/test','/seasons/save','/widget/pair','/widget/redeem','/widget/revoke','/widget/logout','/widget/data'].includes(path))return json({error:'找不到端點'},404,cors);
+    if(!['/mail-recipients','/mail-report','/mail-reports','/session','/session/logout','/snapshot','/refresh','/notifications','/read','/preferences','/push/status','/push/device','/seasons','/seasons/test','/seasons/save','/widget/pair','/widget/redeem','/widget/revoke','/widget/logout','/widget/data'].includes(path))return json({error:'找不到端點'},404,cors);
     if(['/widget/redeem','/widget/data','/widget/logout'].includes(path)){
       const expected=path==='/widget/data'?'GET':'POST';if(request.method!==expected)return json({error:'方法不允許'},405,cors);
       try{
@@ -70,8 +71,8 @@ export function createWorker(authenticateGoogle=authenticate){return {
       }
     }catch(e){return json({error:e.status?e.message:'登入驗證失敗，請重新登入',...(e.status===403?{code:'AUTH_FORBIDDEN'}:{})},e.status||401,cors);}
     try{
-      if(['/snapshot','/notifications','/seasons','/push/status'].includes(path)&&request.method!=='GET')return json({error:'方法不允許'},405,cors);
-      if(!['/snapshot','/notifications','/preferences','/seasons','/push/status'].includes(path)&&request.method!=='POST')return json({error:'方法不允許'},405,cors);
+      if(['/mail-reports','/snapshot','/notifications','/seasons','/push/status'].includes(path)&&request.method!=='GET')return json({error:'方法不允許'},405,cors);
+      if(!['/mail-reports','/snapshot','/notifications','/preferences','/seasons','/push/status'].includes(path)&&request.method!=='POST')return json({error:'方法不允許'},405,cors);
       if(path==='/preferences'&&!['GET','POST'].includes(request.method))return json({error:'方法不允許'},405,cors);
       const limit=path.startsWith('/seasons/')?32000:8192;
       if(Number(request.headers.get('Content-Length')||0)>limit)return json({error:'請求過大'},413,cors);
@@ -89,7 +90,7 @@ export function createWorker(authenticateGoogle=authenticate){return {
         if(target.error)return new Response(target.error.body,{status:target.error.status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}});
         stub=target.stub;entry=target.entry;
       }
-      const response=await stub.fetch('https://internal'+path,{method:request.method,headers:{'Content-Type':'application/json','X-User':user.sub,'X-Email':user.email,'X-Manager':admins.includes(user.email)?'1':'0',...(entry?{'X-Source-Config':JSON.stringify(entry.config),'X-Notify':entry.isDefault?'1':'0'}:{})},...(body?{body}:{})});
+      const response=await stub.fetch('https://internal'+path+url.search,{method:request.method,headers:{'Content-Type':'application/json','X-User':user.sub,'X-Email':user.email,'X-Manager':admins.includes(user.email)?'1':'0',...(entry?{'X-Source-Config':JSON.stringify(entry.config).replace(/[\u007f-\uffff]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0')),'X-Notify':entry.isDefault?'1':'0'}:{})},...(body?{body}:{})});
       return new Response(response.body,{status:response.status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}});
     }catch{return json({error:'看板服務暫時無法處理，原資料未變更，請稍後重試'},503,cors);}
   },
@@ -117,10 +118,11 @@ export class BoardStore {
       if(last&&Date.now()-last<60000)return;
       await this.ctx.storage.put('lastAttempt',Date.now());
       try{
-        const next=await collect(this.env,sourceConfig),previous=await this.snapshot();
+        const {snapshot:next,recipients}=await collect(this.env,sourceConfig,{includeRecipients:true}),previous=await this.snapshot();
         const incoming=await changes(previous,next);
-        const existing=await this.events();
         await this.ctx.storage.transaction(async tx=>{
+          const ids=await tx.get('event-index')||[];
+          const existing=(await Promise.all(ids.map(id=>tx.get('event:'+id)))).filter(Boolean);
           const unique=new Map([...incoming,...existing].map(e=>[e.id,e]));
           const merged=[...unique.values()].sort((a,b)=>b.time.localeCompare(a.time)).slice(0,150);
           for(const event of merged)await tx.put('event:'+event.id,event);
@@ -130,6 +132,7 @@ export class BoardStore {
           for(let i=0;i<count;i++)await tx.put('snapshot:'+i,raw.slice(i*16000,(i+1)*16000));
           for(let i=count;i<(old?.count||0);i++)await tx.delete('snapshot:'+i);
           await tx.put('snapshot-meta',{count});await tx.delete('error');
+          for(const recipient of recipients)await tx.put('mail-recipient:'+recipient.id,{...recipient,updatedAt:next.updatedAt});
         });
         if(notify)await this.push(incoming);
       }catch(e){await this.ctx.storage.put('error',{message:e.message,time:new Date().toISOString()});}
@@ -180,6 +183,22 @@ export class BoardStore {
       await this.update(sourceConfig,notify);return json({ok:true,error:await this.ctx.storage.get('error')||null});
     }
     if(!user||!email)return json({error:'需要登入'},401);
+    if(['/mail-report','/mail-reports','/mail-recipients'].includes(path)){
+      if(request.method!==(path==='/mail-reports'?'GET':'POST'))return json({error:'方法不允許'},405);
+      try{
+        if(path==='/mail-reports'){
+          const url=new URL(request.url),limit=Number(url.searchParams.get('limit')||100);
+          if(!Number.isInteger(limit)||limit<1||limit>100)return json({error:'分頁大小無效'},400);
+          return json(await listMailReports(this.ctx.storage,limit,url.searchParams.get('before')));
+        }
+        const raw=await request.text();if(new TextEncoder().encode(raw).length>8192)return json({error:'請求過大'},413);
+        let body;try{body=JSON.parse(raw);}catch{return json({error:'回報格式不正確'},400);}
+        if(path==='/mail-recipients')return json(await exclusive(async()=>mailRecipients(this.ctx.storage,await this.snapshot(),body,sourceConfig?.season)));
+        const result=await exclusive(async()=>recordMailReport(this.ctx.storage,await this.snapshot(),body,{sub:user,email},sourceConfig?.season));
+        if(!result.duplicate&&notify)await this.push([result.event]);
+        return json({ok:true,report:result.report,duplicate:result.duplicate});
+      }catch(e){return json({error:e.status?e.message:'回報暫時無法處理'},e.status||503);}
+    }
     if(path==='/push/status')return json(await push.status(email));
     if(path==='/push/device'){
       try{return json(await exclusive(async()=>push.device(email,await request.json())));}

@@ -1,0 +1,14 @@
+.email-preview-dialog{width:min(620px,calc(100vw - 24px));max-height:90dvh;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;padding:20px;background:var(--surface,#fff);color:var(--ink,#203730);overflow:auto}
+.email-preview-dialog::backdrop{background:#122b2580}
+.email-preview-dialog header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.email-preview-dialog h2{font-family:BoardHeading,"Noto Serif TC",serif;font-size:24px;margin:0 0 16px}
+.email-preview-dialog label{display:flex;flex-direction:column;gap:6px;margin:12px 0;font-size:14px}
+.email-preview-dialog input:not([type=checkbox]),.email-preview-dialog textarea,.email-preview-dialog select{width:100%;box-sizing:border-box;font:inherit;color:inherit;background:var(--surface,#fff);border:1px solid var(--line,#cbd8d2);border-radius:4px;padding:10px;min-height:44px}
+.email-preview-dialog textarea{min-height:300px;resize:vertical;line-height:1.65}
+.email-preview-dialog .email-rule-toggle,.email-preview-dialog fieldset label{flex-direction:row;align-items:flex-start}
+.email-preview-dialog fieldset{border:1px solid var(--line,#cbd8d2);border-radius:4px;margin-top:18px;padding:12px}
+.email-preview-dialog .email-open{display:inline-flex;align-items:center;justify-content:center;padding:10px 16px;border-radius:4px;min-height:44px;text-decoration:none;box-sizing:border-box}
+.email-preview-dialog [aria-disabled=true]{opacity:.5;pointer-events:none}
+.email-preview-dialog [role=status]{overflow-wrap:anywhere}
+@media(max-width:450px){.email-preview-dialog{padding:14px}.email-preview-dialog .section-actions{display:flex;flex-wrap:wrap;gap:8px}.email-preview-dialog .section-actions>*{flex:1}}
+

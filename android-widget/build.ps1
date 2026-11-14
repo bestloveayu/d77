@@ -1,4 +1,4 @@
-param([string]$SdkRoot = "", [string]$JavaHome = "", [string]$Version = '0.3.2', [int]$VersionCode = 5)
+param([string]$SdkRoot = "", [string]$JavaHome = "", [string]$Version = '0.3.3', [int]$VersionCode = 6)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 if (!$SdkRoot) { $SdkRoot = Join-Path (Split-Path $root) '.android-tools/sdk' }
@@ -20,7 +20,7 @@ Check
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 if (Test-Path -LiteralPath "$build/classes.jar") { Remove-Item -LiteralPath "$build/classes.jar" }
 [System.IO.Compression.ZipFile]::CreateFromDirectory("$build/classes", "$build/classes.jar")
-& "$tools/d8.bat" --lib $platform --min-api 26 --output "$build/dex" "$build/classes.jar"
+& "$JavaHome/bin/java.exe" -cp "$tools/lib/d8.jar" com.android.tools.r8.D8 --lib $platform --min-api 26 --output "$build/dex" "$build/classes.jar"
 Check
 Copy-Item -LiteralPath "$build/base.apk" -Destination "$build/unsigned.apk" -Force
 $zip = [System.IO.Compression.ZipFile]::Open("$build/unsigned.apk", [System.IO.Compression.ZipArchiveMode]::Update)
@@ -32,9 +32,9 @@ if (!(Test-Path -LiteralPath $key)) {
   & "$JavaHome/bin/keytool.exe" -genkeypair -keystore $key -storepass android -keypass android -alias widget-test -keyalg RSA -keysize 3072 -validity 3650 -dname 'CN=D77 Widget Local Test,O=D77,C=TW'
   Check
 }
-& "$tools/apksigner.bat" sign --ks $key --ks-key-alias widget-test --ks-pass pass:android --key-pass pass:android --out "$root/dist/東77桌面小工具_${Version}_測試版.apk" "$build/aligned.apk"
+& "$JavaHome/bin/java.exe" -jar "$tools/lib/apksigner.jar" sign --ks $key --ks-key-alias widget-test --ks-pass pass:android --key-pass pass:android --out "$root/dist/東77桌面小工具_${Version}_測試版.apk" "$build/aligned.apk"
 Check
-& "$tools/apksigner.bat" verify --verbose "$root/dist/東77桌面小工具_${Version}_測試版.apk"
+& "$JavaHome/bin/java.exe" -jar "$tools/lib/apksigner.jar" verify --verbose "$root/dist/東77桌面小工具_${Version}_測試版.apk"
 Check
 & "$JavaHome/bin/javac.exe" -encoding UTF-8 --release 8 -d "$build/tests" "$root/src/tw/d77/widget/LayoutMetrics.java" "$root/tests/LayoutMetricsTest.java"
 Check
@@ -45,3 +45,8 @@ Check
 & "$JavaHome/bin/java.exe" -cp "$build/tests" FeedOrderTest
 Check
 Get-FileHash -Algorithm SHA256 -LiteralPath "$root/dist/東77桌面小工具_${Version}_測試版.apk"
+& "$JavaHome/bin/javac.exe" -encoding UTF-8 --release 8 -d "$build/tests" "$root/src/tw/d77/widget/Shortcut.java" "$root/tests/ShortcutTest.java"
+Check
+& "$JavaHome/bin/java.exe" -cp "$build/tests" ShortcutTest
+Check
+

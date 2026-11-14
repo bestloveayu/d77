@@ -113,7 +113,7 @@
     t.setUint32(12,size,true);t.setUint32(16,offset,true);
     return new Blob([...chunks,...directory,tail],{type:'application/zip'});
   }
-  function open(orders,{season='',share=false}={}){
+  function open(orders,{season='',share=false,onEmail}={}){
     if(!orders.length){alert('請先勾選要匯出的顧客訂單。');return;}
     const originals=orders.filter(valid).map(o=>({...o,lines:o.lines.map(l=>({...l}))})),skipped=orders.filter(o=>!valid(o));
     let good=originals.map(o=>({...o,lines:o.lines.map(l=>({...l}))})),combine=false;
@@ -125,6 +125,11 @@
     const clear=()=>{if(url)URL.revokeObjectURL(url);url='';file=null;img.hidden=true;img.removeAttribute('src');link.hidden=true;link.removeAttribute('href');shareBtn.hidden=true;};
     dialog.addEventListener('close',()=>{sequence++;clear();dialog.remove();},{once:true});
     dialog.querySelector('[data-close]').onclick=()=>dialog.close();
+    if(onEmail){
+      const email=document.createElement('button');email.type='button';email.textContent='Email 預覽';
+      email.onclick=()=>onEmail(good.filter(o=>o.lines.length).map(o=>({...o,lines:o.lines.map(l=>({...l}))})));
+      dialog.querySelector('.order-image-actions').append(email);
+    }
     shareBtn.onclick=async()=>{try{if(file)await navigator.share({files:[file]});}catch(e){if(e.name!=='AbortError')status.textContent='分享失敗，請改用下載圖片。';}};
     function renderEditor(){
       const editor=dialog.querySelector('.order-image-editor');editor.replaceChildren();

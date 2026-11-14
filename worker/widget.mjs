@@ -67,6 +67,12 @@ export class WidgetStore {
   }
 }
 const types={order:['新增訂單','orders'],change:['訂單資料已更新','orders'],activity:['協作操作已更新','orders'],shortage:['庫存狀態已更新','inventory'],rules:['中文規則已更新','rules'],stock:['庫存異動','inventory'],purchase:['下單已確認','orders'],shipment:['出貨已登記','orders'],mail:['規則已寄送','orders'],registration:['訂單待出貨登記','orders'],'rules-pending':['訂單待寄規則','orders']};
+function shortcut(snapshot,event){
+  const type=event.type,target=event.target;
+  if(['order','rules-pending'].includes(type)&&snapshot?.orders?.some(o=>o.id===target?.id))return {type,target:{id:target.id}};
+  if(['rules','shortage'].includes(type)&&snapshot?.products?.some(p=>p.name===target?.name))return {type,target:{name:target.name}};
+  return {type};
+}
 export function widgetSummary(snapshot,events=[],stale=false,error=null){
   const counts=snapshot?{
     awaitingPurchase:snapshot.orders.filter(awaitingPurchase).length,
@@ -79,11 +85,11 @@ export function widgetSummary(snapshot,events=[],stale=false,error=null){
     todos:definitions.filter(([key])=>counts[key]>0).flatMap(([key,title,page])=>{
       const matching=key==='shortage'?snapshot.products.filter(p=>p.shortage>0||p.usedShortage>0):snapshot.orders.filter(o=>key==='awaitingPurchase'?awaitingPurchase(o):(o.followUp||classifyFollowUp(o)).kind===(key==='awaitingShipment'?'registration':'rules'));
       matching.sort((a,b)=>key==='shortage'?(b.shortage||0)+(b.usedShortage||0)-(a.shortage||0)-(a.usedShortage||0):(parseTimestamp(b.time)||0)-(parseTimestamp(a.time)||0));
-      return matching.slice(0,8).map(o=>({title:o.name+' · '+title,body:key==='shortage'?'全新缺 '+(o.shortage??'?')+' 盒；二手缺 '+(o.usedShortage??'?')+' 盒；全新庫存 '+(o.stock??'?')+' 盒':orderFacts(o),page,time:null}));
+      return matching.slice(0,8).map(o=>({title:o.name+' · '+title,body:key==='shortage'?'全新缺 '+(o.shortage??'?')+' 盒；二手缺 '+(o.usedShortage??'?')+' 盒；全新庫存 '+(o.stock??'?')+' 盒':orderFacts(o),page,time:null,...shortcut(snapshot,{type:key==='shortage'?'shortage':key==='awaitingRules'?'rules-pending':key==='awaitingPurchase'?'order':'registration',target:key==='shortage'?{name:o.name}:{id:o.id}})}));
     }),
     events:events.filter(e=>types[e.type]&&!(e.type==='stock'&&(snapshot?.transactions?.find(t=>t.id===e.target?.transactionId)?.kind==='銷貨收入'||/銷貨收入| · 出貨$/.test(e.widgetFacts?.title||'')))).slice(0,32).map(e=>{
       const facts=['order','mail'].includes(e.type)?widgetFacts(snapshot,e)||e.widgetFacts:e.widgetFacts||widgetFacts(snapshot,e);
-      return {title:String(facts?.title||types[e.type][0]).slice(0,100),body:String(facts?(e.widgetFacts?'':'目前資料：')+facts.body:'此筆舊動態沒有詳細資料').slice(0,300),page:types[e.type][1],time:e.time};
+      return {title:String(facts?.title||(e.type==='activity'&&e.title?.includes('（手機）')?e.title:types[e.type][0])).slice(0,100),body:String(facts?(e.widgetFacts?'':'目前資料：')+facts.body:e.type==='activity'&&e.title?.includes('（手機）')?e.detail:'此筆舊動態沒有詳細資料').slice(0,300),page:types[e.type][1],time:e.time,...shortcut(snapshot,e)};
     })};
 }
 
