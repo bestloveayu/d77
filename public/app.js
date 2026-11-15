@@ -3,7 +3,7 @@ import {mountRuleCopy,resetRuleCopy} from './rule-copy.js?v=20261109.5';
 import {showSeasonSettings} from './season-settings.js';
 import {mountWidgetSettings} from './widget-settings.js?v=20261114.3';
 import {SOURCE_DEFAULTS} from './season-config.js';
-import {stageLabel,orderProgressLabels} from './order-status.js';
+import {stageLabel,orderProgressLabels} from './order-status.js?v=20261115.1';
 import {parseTimestamp} from './timestamp.js?v=20261102.3';
 import {installSwipe} from './swipe.js?v=20261102.3';
 import {createPushClient} from './push.js?v=20261102.1';
@@ -17,7 +17,8 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;
 const money=n=>n==null?'待核對':'$'+Number(n).toLocaleString('zh-TW');
 const num=n=>n==null?'—':n;
 const badge=(text,kind='')=>`<span class="badge ${kind}">${esc(text)}</span>`;
-const progressBadges=o=>{const task=followUp(o);return orderProgressLabels(o).map(p=>badge(p.text,p.good?'good':'')).join('')+(['registration','rules'].includes(task.kind)?badge(task.label,'warn'):task.kind==='review'?badge(task.reason||task.label,'warn'):'');};
+const progressBadges=o=>{const task=followUp(o);return orderProgressLabels(o).map((p,n)=>badge(p.text,p.good?'good':n===1&&task.kind==='registration'?'warn':'')).join('')+(task.kind==='rules'?badge(task.label,'warn'):task.kind==='review'?badge(task.reason||task.label,'warn'):'');};
+const orderStatusBadge=o=>['待出貨','已出貨'].includes(o.status)?'':badge(o.status,o.status==='待核對'?'bad':'warn');
 const names={overview:'營運總覽',orders:'顧客訂單',inventory:'庫存查詢',rules:'規則進度',notifications:'最新動態',transactions:'收支紀錄'};
 const eventIcon={order:'clipboard-list',change:'git-compare-arrows',shortage:'triangle-alert',rules:'book-open',activity:'package-check',registration:'clipboard-list','rules-pending':'mail'};
 const followUp=o=>classifyFollowUp(o);
@@ -84,7 +85,7 @@ function ordersView(){
   if(['registration','rules','review'].includes(filter))rows=rows.filter(o=>followUp(o).kind===filter);
   rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):(parseTime(a.time)-parseTime(b.time))*(sort==='old'?1:-1));
   return filters('搜尋顧客、品項',[['all','全部'],['registration','待出貨登記'],['rules','待寄規則'],['pending','待下單'],['done','已出貨'],['review','待核對']],[['new','填單時間新到舊'],['old','填單時間舊到新'],['name','依姓名']],'order-followup-filters')+`<div class="count-line"><span>共 ${rows.length} 筆訂單</span><span>依原始訂單分列</span></div>`+
-  (rows.map(o=>`<article class="order"><div class="order-top"><div><button class="order-name" data-order="${esc(o.id)}">${esc(o.name||'姓名待核對')}${icon('chevron-right')}</button><p class="order-meta">${esc(o.nickname||'')}${o.nickname?' · ':''}${o.manual?'手動訂單':esc(o.time||'填單時間未記錄')}</p></div><strong>${money(o.total)}</strong></div><div class="badges">${badge(o.status,o.status==='已出貨'?'good':o.status==='待核對'?'bad':'warn')}${progressBadges(o)}${o.manual?badge('手動追加'):''}${o.phoneSuffix?badge('手機末碼 '+o.phoneSuffix):''}</div><div class="order-items">${o.lines.map(l=>`<span class="order-item">${icon('package')}${esc(l.name)} × ${num(l.quantity)}</span>`).join('')}</div></article>`).join('')||empty('沒有符合條件的訂單'));
+  (rows.map(o=>`<article class="order"><div class="order-top"><div><button class="order-name" data-order="${esc(o.id)}">${esc(o.name||'姓名待核對')}${icon('chevron-right')}</button><p class="order-meta">${esc(o.nickname||'')}${o.nickname?' · ':''}${o.manual?'手動訂單':esc(o.time||'填單時間未記錄')}</p></div><strong>${money(o.total)}</strong></div><div class="badges">${orderStatusBadge(o)}${progressBadges(o)}${o.manual?badge('手動追加'):''}${o.phoneSuffix?badge('手機末碼 '+o.phoneSuffix):''}</div><div class="order-items">${o.lines.map(l=>`<span class="order-item">${icon('package')}${esc(l.name)} × ${num(l.quantity)}</span>`).join('')}</div></article>`).join('')||empty('沒有符合條件的訂單'));
 }
 function stockWarnings(p){return `${p.shortage>0?`<small class="shortage-estimate">${p.shortageEstimate?'缺貨估算':'全新缺貨'} ${p.shortage} 盒</small>`:''}${p.usedShortage>0?`<small class="shortage-estimate">二手缺貨 ${p.usedShortage} 盒</small>`:''}`;}
 function stockTable(rows,expanded=false){
@@ -211,7 +212,7 @@ function handleWidgetLink(){
  }
 }
 function orderDetail(id){const o=data.orders.find(o=>o.id===id);if(!o)return;
-  openDialog(o.name,`<div class="section-actions"><button type="button" data-email-order="${esc(o.id)}">${icon('mail')}Email 預覽</button><button type="button" data-image-order="${esc(o.id)}">${icon('image')}訂單圖片預覽</button></div><div class="badges">${badge(o.status,o.status==='已出貨'?'good':'warn')}${badge('總額 '+money(o.total))}${progressBadges(o)}</div><p class="read-only-note">${esc(o.time||'')} ${o.sourceRow?'· 來源列 '+o.sourceRow:''}</p>${o.lines.map(l=>{
+  openDialog(o.name,`<div class="section-actions"><button type="button" data-email-order="${esc(o.id)}">${icon('mail')}Email 預覽</button><button type="button" data-image-order="${esc(o.id)}">${icon('image')}訂單圖片預覽</button></div><div class="badges">${orderStatusBadge(o)}${badge('總額 '+money(o.total))}${progressBadges(o)}</div><p class="read-only-note">${esc(o.time||'')} ${o.sourceRow?'· 來源列 '+o.sourceRow:''}</p>${o.lines.map(l=>{
     const p=data.products.find(p=>p.name===l.name);return `<div class="detail-line"><strong>${esc(l.name)}</strong><span class="amount">${num(l.quantity)} × ${money(l.price)}</span><div class="badges">${['purchased','shipped','mailed'].map(field=>badge(stageLabel(l,field),l.evidence?.[field]==='conflict'?'bad':l[field]>0?'good':'')).join('')}${badge(p?.rules.length?'已翻譯':'未翻譯',p?.rules.length?'good':'warn')}</div>${links(p)}</div>`;}).join('')}${o.issues?.length?`<p class="notice">${esc(o.issues.join('；'))}</p>`:''}`);
 }
 function productDetail(name,rulesOnly=false){const p=data.products.find(p=>p.name===name);if(!p)return;

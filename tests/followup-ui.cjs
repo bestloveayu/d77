@@ -14,6 +14,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
    if(file.endsWith('app.js'))body=Buffer.from(body.toString()+`
      const line=(p,s,m)=>({name:'遊戲甲',originalName:'遊戲甲',quantity:1,price:100,purchased:p,shipped:s,mailed:m,evidence:{purchased:'confirmed',shipped:s===null?'missing':'confirmed',mailed:'missing'},noRulesRequired:false});
      data={season:'2026秋',updatedAt:new Date().toISOString(),orders:[{id:'a',name:'已下單顧客',lines:[line(1,null,null)],status:'待出貨',issues:[],followUp:{kind:'review'}},{id:'b',name:'已出貨顧客',lines:[line(1,1,null)],status:'已出貨',issues:[],followUp:{kind:'review'}}],products:[],finance:{income:0,cost:0,profit:0,eastDue:0},summary:{orders:2,shortages:0,rulesReady:0,rulesTotal:0}};
+     for(const order of data.orders)order.progress={total:1,purchased:1,shipped:order.id==='a'?0:1,mailed:0,ruleTotal:1,purchaseUnknown:0,shipmentUnknown:order.id==='a'?1:0,mailUnknown:1};
      events=[{id:'e',type:'purchase',title:'下單已確認',detail:'雲端已確認',target:{page:'orders',id:'a'},time:new Date().toISOString()}];
      seasonState={seasons:[{season:'2026秋'}]};selectedSeason='2026秋';showWorkspace();
    `);
@@ -26,9 +27,12 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  await page.getByRole('button',{name:'待出貨登記',exact:true}).click();
  assert.equal(await page.locator('.order').count(),1);
  assert.match(await page.locator('.order').innerText(),/已下單顧客/);
+ assert.deepEqual(await page.locator('.order .badges>span').allTextContents(),['已下單 1/1','待出貨登記 1/1（部分無紀錄）','規則已寄 0/1（部分無紀錄）']);
  await page.getByRole('button',{name:'待寄規則',exact:true}).click();
  assert.equal(await page.locator('.order').count(),1);
  assert.match(await page.locator('.order').innerText(),/已出貨顧客/);
+ const shipped=await page.locator('.order .badges>span').allTextContents();
+ assert.equal(shipped[0],'已下單 1/1');assert.equal(shipped[1],'已出貨登記 1/1');assert(!shipped.includes('已出貨'));assert(!shipped.includes('待出貨'));
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
  assert.deepEqual(errors,[]);
  console.log('Mobile existing activity customer names, missing-resource filters, and width passed');

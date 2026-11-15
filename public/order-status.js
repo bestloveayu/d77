@@ -9,10 +9,11 @@ export function stageLabel(line,field){
 }
 export function orderProgressLabels(order){
   const p=order.progress;if(!p)return [];
+  const shippedComplete=!p.shipmentUnknown&&p.total>0&&p.shipped===p.total;
+  const shipmentText=shippedComplete?'已出貨登記 '+p.shipped+'/'+p.total:'待出貨登記 '+Math.max(0,(p.purchased||0)-(p.shipped||0))+'/'+(p.total??'?')+(p.shipmentUnknown?'（部分無紀錄）':'');
   return [
     {text:(p.purchaseUnknown?'下單已確認 ':'已下單 ')+p.purchased+'/'+(p.total??'?')+(p.purchaseUnknown?'（部分無紀錄）':''),good:!p.purchaseUnknown&&p.purchased===p.total},
-    {text:(p.shipmentUnknown?'出貨已確認 ':'已出貨 ')+p.shipped+'/'+(p.total??'?')+(p.shipmentUnknown?'（部分無紀錄）':''),good:!p.shipmentUnknown&&p.shipped===p.total},
+    {text:shipmentText,good:shippedComplete},
     {text:'規則已寄 '+p.mailed+'/'+p.ruleTotal+(p.mailUnknown?'（部分無紀錄）':''),good:!p.mailUnknown&&p.mailed===p.ruleTotal}
   ];
 }
-
