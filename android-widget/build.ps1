@@ -1,4 +1,4 @@
-param([string]$SdkRoot = "", [string]$JavaHome = "", [string]$Version = '0.3.5', [int]$VersionCode = 8)
+param([string]$SdkRoot = "", [string]$JavaHome = "", [string]$Version = '0.3.6', [int]$VersionCode = 9)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 if (!$SdkRoot) { $SdkRoot = Join-Path (Split-Path $root) '.android-tools/sdk' }
@@ -57,4 +57,3 @@ Check
 Check
 & "$JavaHome/bin/java.exe" '-Djava.awt.headless=true' -cp "$build/tests" FooterFitTest $root
 Check
-

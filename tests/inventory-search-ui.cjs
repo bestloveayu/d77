@@ -20,6 +20,12 @@ const assert=require('node:assert/strict');const {spawn}=require('node:child_pro
  await page.locator('#sort').selectOption('ordered-desc');assert((await page.locator('.inventory-stock .stock-row').first().innerText()).includes('企鵝之路'));
  await page.locator('#sort').selectOption('stock-desc');assert((await page.locator('.inventory-stock .stock-row').first().innerText()).includes('北海'));
  await page.locator('[data-filter=used]').click();assert.equal(await page.locator('.inventory-stock .stock-row').count(),1);assert.deepEqual(await page.locator('.inventory-stock .stock-row .num').allTextContents(),['4','10','1']);
+ for(const mode of ['all','shortage','used','shipping']){
+  await page.locator('[data-filter='+mode+']').click();
+  const count=await page.locator('.inventory-stock .stock-row').count();
+  assert.equal((await page.locator('.inventory-count').innerText()).trim(),'共 '+count+' 個品項');
+  if(mode==='shipping')for(const value of await page.locator('.inventory-stock .stock-row .num:first-of-type').allTextContents())assert(Number(value)>0);
+ }
  for(const width of [320,390,1440]){await page.setViewportSize({width,height:900});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await page.screenshot({path:`test-results/inventory-split-${width}.png`,fullPage:true});}
  assert.deepEqual(errors,[]);console.log('PASS composition input across orders/inventory/rules, split stock columns, descending sorts and responsive layout');
 }finally{await browser.close();server.kill();}})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -1,7 +1,7 @@
 import {demoSnapshot,demoEvents} from './demo.js';
 import {mountRuleCopy,resetRuleCopy} from './rule-copy.js?v=20261109.5';
 import {showSeasonSettings} from './season-settings.js';
-import {mountWidgetSettings} from './widget-settings.js?v=20261114.3';
+import {mountWidgetSettings} from './widget-settings.js?v=20261115.1';
 import {SOURCE_DEFAULTS} from './season-config.js';
 import {stageLabel,orderProgressLabels} from './order-status.js?v=20261115.1';
 import {parseTimestamp} from './timestamp.js?v=20261102.3';
@@ -94,11 +94,11 @@ function stockTable(rows,expanded=false){
 }
 function inventoryView(){
   let rows=data.products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
-  if(filter==='shortage')rows=rows.filter(p=>p.shortage>0||p.usedShortage>0);if(filter==='used')rows=rows.filter(p=>p.usedStock!==0||p.usedOrdered>0||p.usedShipped>0);if(filter==='unknown')rows=rows.filter(p=>p.coverage==='unknown');
+  if(filter==='shortage')rows=rows.filter(p=>p.shortage>0||p.usedShortage>0);if(filter==='used')rows=rows.filter(p=>p.usedStock!==0||p.usedOrdered>0||p.usedShipped>0);if(filter==='unknown')rows=rows.filter(p=>p.coverage==='unknown');if(filter==='shipping')rows=rows.filter(p=>p.outstanding>0||p.usedOutstanding>0);
   const totalStock=p=>(p.stock??0)+(p.usedStock??0);
   rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):sort==='outstanding-desc'?(b.outstanding??-1)-(a.outstanding??-1):sort==='ordered-desc'?(b.ordered??-1)-(a.ordered??-1):sort==='stock-desc'?totalStock(b)-totalStock(a):sort==='stock'?totalStock(a)-totalStock(b):sort==='shortage'?(b.shortage??-1)-(a.shortage??-1):(b.stockUpdatedTime||0)-(a.stockUpdatedTime||0)||(b.stockUpdatedRow||0)-(a.stockUpdatedRow||0));
   const reconcile=data.unmatchedShipments?.length?`<button id="inventory-reconcile" class="alert-row warn">${icon('triangle-alert')}<span class="text"><strong>${data.unmatchedShipments.length} 筆金流出貨未對應本季品項</strong><small>這些出貨尚未納入下列數量</small></span>${icon('chevron-right')}</button>`:'';
-  return filters('搜尋品項',[['all','全部'],['shortage','缺貨'],['used','二手'],['unknown','待確認']],[['new','更新時間新到舊'],['shortage','缺貨多到少'],['outstanding-desc','待出貨量由多至少'],['ordered-desc','訂購量由多至少'],['stock-desc','庫存由多至少'],['name','依名稱'],['stock','庫存少到多']])+reconcile+stockTable(rows,true)+`<p class="read-only-note">${icon('info')} 待出量＝訂購量－本季金流出貨量；缺貨＝待出量－全新庫存，最低為 0。二手獨立計算，不與全新互抵。</p>`;
+  return filters('搜尋品項',[['all','全部'],['shortage','缺貨'],['used','二手'],['shipping','需出貨']],[['new','更新時間新到舊'],['shortage','缺貨多到少'],['outstanding-desc','待出貨量由多至少'],['ordered-desc','訂購量由多至少'],['stock-desc','庫存由多至少'],['name','依名稱'],['stock','庫存少到多']])+`<div class="count-line inventory-count"><span>共 ${rows.length} 個品項</span></div>`+reconcile+stockTable(rows,true)+`<p class="read-only-note">${icon('info')} 待出量＝訂購量－本季金流出貨量；缺貨＝待出量－全新庫存，最低為 0。二手獨立計算，不與全新互抵。</p>`;
 }
 function rulesView(){
   let rows=data.products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));

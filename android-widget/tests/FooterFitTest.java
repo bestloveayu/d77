@@ -9,7 +9,7 @@ public final class FooterFitTest {
     public static void main(String[] args) throws Exception {
         Path root=Paths.get(args[0]);
         String source=new String(Files.readAllBytes(root.resolve("src/tw/d77/widget/BoardWidget.java")),StandardCharsets.UTF_8);
-        String label="\u65b0\u589e\u9810\u8cfc";
+        String label="\u5f85\u4e0b\u55ae";
         if(!source.contains("String[] labels = {\""+label+"\""))throw new AssertionError("Runtime purchase label");
         DocumentBuilderFactory factory=DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
@@ -27,7 +27,7 @@ public final class FooterFitTest {
         Font regular=Font.createFont(Font.TRUETYPE_FONT,root.resolve("res/font/widget_serif.ttf").toFile());
         Font bold=Font.createFont(Font.TRUETYPE_FONT,root.resolve("res/font/widget_serif_semibold.ttf").toFile());
         FontRenderContext frc=new FontRenderContext(null,true,true);
-        String[] labels={label,"\u5f85\u51fa\u8ca8","\u5f85\u5bc4","\u7f3a\u8ca8"};
+        String[] labels={label,"\u5f85\u51fa\u8ca8","\u5f85\u5bc4\u898f\u5247","\u7f3a\u8ca8"};
         double[] weights={1,1,1,1};
         String[] ids={"purchase","shipment","rules","shortage"};
         NodeList containers=layout.getElementsByTagName("LinearLayout");
@@ -59,4 +59,3 @@ public final class FooterFitTest {
         System.out.println("FooterFitTest passed: label contract; 4x2-4x5 host font metrics at 320dp, scale 1, all counts 0-999; 9999 overflow cases="+fourDigitOverflows);
     }
 }
-
