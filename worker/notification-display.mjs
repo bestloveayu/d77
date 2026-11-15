@@ -6,11 +6,10 @@ export function displayEvent(event,snapshot){
   if(['registration','purchase','rules-pending'].includes(event.type)){
     const facts=widgetFacts(snapshot,event);if(facts)return {...out,title:facts.title,detail:facts.body};
   }
-  if(['stock','shortage'].includes(event.type)){
+  if(['stock','shortage','rules'].includes(event.type)){
     const facts=widgetFacts(snapshot,event);if(facts)return {...out,title:facts.title,detail:facts.body};
   }
   if(event.type==='shortage')out.title='庫存不足';
-  if(event.type==='rules')out.title='中文規則更新';
   if(['order','change','purchase','shipment','mail','rules-pending'].includes(event.type)){
     const order=snapshot?.orders?.find(o=>o.id===event.target?.id);
     const suffix={order:'新增預購',change:'訂購內容有異動',purchase:'下單已確認',shipment:'出貨已登記',mail:'規則已寄送','rules-pending':'規則待寄'};

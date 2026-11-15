@@ -36,7 +36,7 @@ export function widgetFacts(snapshot,event){
   const labels={order:'新增預購',change:'訂單異動',registration:'待出貨登記','rules-pending':'待寄規則',purchase:'下單已確認',shipment:'出貨已登記',mail:'規則已寄送'};
   if(order&&labels[event.type])return {title:text(order.name,40)+' '+labels[event.type],body:['order','mail'].includes(event.type)?itemFacts(event.type==='mail'&&Array.isArray(event.itemNames)?{lines:order.lines.filter(l=>event.itemNames.includes(l.name))}:order):orderFacts(order)};
   const product=snapshot?.products?.find(p=>p.name===target.name);
-  if(event.type==='rules'&&product)return {title:text(product.name,60)+' · 中文規則更新',body:product.rules.map(r=>text(r.name,90)).slice(0,3).join('、')};
+  if(event.type==='rules')return {title:(target.name?text(target.name,60)+' ':'')+'中文檔案更新',body:event.widgetFacts?.body||event.detail||'舊紀錄未保存當次更新的檔案類型'};
   if(event.type==='stock'){
     const tx=snapshot?.transactions?.find(t=>t.id===target.transactionId);
     if(tx){

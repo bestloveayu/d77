@@ -9,7 +9,14 @@ test('saved activity gets new copy without changing identity, time or read flag'
  assert.equal(out.id,event.id);assert.equal(out.time,event.time);assert.equal(out.read,true);assert.equal(event.title,'新增預購訂單');
 });
 test('old shortage and rule titles are replaced without losing details',()=>{
- for(const [type,title] of [['shortage','庫存不足'],['rules','中文規則更新']])assert.equal(displayEvent({type,detail:'遊戲甲'},snapshot).title,title);
+ for(const [type,title] of [['shortage','庫存不足'],['rules','中文檔案更新']])assert.equal(displayEvent({type,detail:'遊戲甲'},snapshot).title,title);
+});
+test('typed rule updates retain their original subtype while legacy records are neutral',()=>{
+ const activityFacts={title:'遊戲甲 中文卡牌更新',body:'遊戲甲_中文卡牌.pdf'};
+ const event={id:'a',type:'rules',target:{name:'遊戲甲'},activityFacts,time:'2026-11-15',read:true};
+ assert.equal(displayEvent(event,snapshot).title,activityFacts.title);
+ const legacy=displayEvent({...event,activityFacts:undefined,detail:'遊戲甲'},snapshot);
+ assert.equal(legacy.title,'遊戲甲 中文檔案更新');assert.equal(legacy.id,event.id);assert.equal(legacy.read,true);
 });
 test('saved facts work for removed customer without borrowing another identity',()=>{
  const out=displayEvent({type:'order',widgetFacts:{title:'舊顧客 · 新增訂單',body:'舊品項 ×1；合計 $990'}},{orders:[]});

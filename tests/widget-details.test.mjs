@@ -16,7 +16,8 @@ test('widget exposes requested facts and verified navigation targets, never cont
 test('rule and stock updates include file, canonical product and signed quantity without cash',()=>{
   const tx={id:'row-5',name:'A遊戲甲',kind:'進貨成本',quantity:3,amount:900,actor:'于正'};
   const out=widgetSummary({...snapshot,transactions:[tx]},[{type:'rules',target:{name:'遊戲甲'},time:snapshot.updatedAt},{type:'stock',target:{transactionId:'row-5'},time:snapshot.updatedAt}]);
-  assert.match(out.events[0].body,/遊戲甲_中文規則.pdf/);
+  assert.equal(out.events[0].title,'遊戲甲 中文檔案更新');
+  assert.match(out.events[0].body,/舊紀錄未保存/);
   assert.match(out.events[1].title,/遊戲甲 庫存增加/);assert.match(out.events[1].body,/全新 \+3 盒 · 于正登記/);assert(!out.events[1].body.includes('900'));
 });
 test('feed retains more than eight events and excludes arbitrary text',()=>{
