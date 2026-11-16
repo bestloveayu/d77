@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {classifyFollowUp,needsAttention} from '../public/order-followup.js';
+import {classifyFollowUp,needsAttention,followUpFlags} from '../public/order-followup.js';
 test('shipped but unmailed or review orders stay in general pending work',()=>{
  assert(needsAttention({...order(line({shipped:2})),status:'已出貨'}));
  assert(needsAttention({...order(line({shipped:2,noRulesRequired:null})),status:'已出貨'}));
@@ -8,6 +8,12 @@ test('shipped but unmailed or review orders stay in general pending work',()=>{
 import {changes,catalog} from '../worker/model.mjs';
 const line=(overrides={})=>({quantity:2,purchased:2,shipped:0,mailed:0,noRulesRequired:false,evidence:{purchased:'confirmed',shipped:'confirmed',mailed:'confirmed'},...overrides});
 const order=(l=line())=>({id:'one',issues:[],lines:[l]});
+test('partly shipped orders can need both registration and rules; unpurchased shortage does not block',()=>{
+ const o=order(line({quantity:1,purchased:1,shipped:1}));o.lines.push(line({quantity:1,purchased:1,shipped:0}),line({quantity:1,purchased:0,shipped:0}));
+ assert.equal(followUpFlags(o).registration,true);assert.equal(followUpFlags(o).rules,true);
+ o.lines[1].shipped=1;assert.equal(followUpFlags(o).registration,false);assert.equal(classifyFollowUp(o).kind,'rules');
+ o.lines[0].mailed=1;o.lines[1].noRulesRequired=true;assert.equal(followUpFlags(o).rules,false);
+});
 test('confirmed orders waiting for registration and for required rules are distinct',()=>{
  assert.equal(classifyFollowUp(order()).kind,'registration');
  assert.equal(classifyFollowUp(order(line({shipped:2}))).kind,'rules');
@@ -66,3 +72,4 @@ test('purchase events identify the customer without exposing contact details',as
  assert.equal(events.find(e=>e.type==='registration').title,'測試顧客 已下單待出貨');
  assert.equal(events.filter(e=>['purchase','registration'].includes(e.type)).length,1);
 });
+

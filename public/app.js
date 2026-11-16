@@ -7,7 +7,7 @@ import {stageLabel,orderProgressLabels} from './order-status.js?v=20261115.1';
 import {parseTimestamp} from './timestamp.js?v=20261102.3';
 import {installSwipe} from './swipe.js?v=20261102.3';
 import {createPushClient} from './push.js?v=20261102.1';
-import {classifyFollowUp,awaitingPurchase,notificationChoices,notificationTypes} from './order-followup.js?v=20261111.1';
+import {classifyFollowUp,followUpFlags,awaitingPurchase,notificationChoices,notificationTypes} from './order-followup.js?v=20261116.1';
 import {filterTransactions,transactionTotals,transactionAmount,personCash} from './transaction-summary.js?v=20261103.2';
 import {openEmailPreview} from './email-preview.js?v=20261114.1';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
@@ -17,7 +17,7 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;
 const money=n=>n==null?'待核對':'$'+Number(n).toLocaleString('zh-TW');
 const num=n=>n==null?'—':n;
 const badge=(text,kind='')=>`<span class="badge ${kind}">${esc(text)}</span>`;
-const progressBadges=o=>{const task=followUp(o);return orderProgressLabels(o).map((p,n)=>badge(p.text,p.good?'good':n===1&&task.kind==='registration'?'warn':'')).join('')+(task.kind==='rules'?badge(task.label,'warn'):task.kind==='review'?badge(task.reason||task.label,'warn'):'');};
+const progressBadges=o=>{const task=followUp(o),flags=followUpFlags(o);return orderProgressLabels(o).map((p,n)=>badge(p.text,p.good?'good':n===1&&flags.registration?'warn':'')).join('')+(flags.rules?badge('待寄規則','warn'):'')+(task.kind==='review'?badge(task.reason||task.label,'warn'):'');};
 const orderStatusBadge=o=>['待出貨','已出貨'].includes(o.status)?'':badge(o.status,o.status==='待核對'?'bad':'warn');
 const names={overview:'營運總覽',orders:'顧客訂單',inventory:'庫存查詢',rules:'規則進度',notifications:'最新動態',transactions:'收支紀錄'};
 const eventIcon={order:'clipboard-list',change:'git-compare-arrows',shortage:'triangle-alert',rules:'book-open',activity:'package-check',registration:'clipboard-list','rules-pending':'mail'};
@@ -56,7 +56,7 @@ function financeSummary(action='',className=''){
 }
 function overview(){
   const s=data.summary;
-  const registration=data.orders.filter(o=>followUp(o).kind==='registration').length,rulesPending=data.orders.filter(o=>followUp(o).kind==='rules').length,unplaced=data.orders.filter(awaitingPurchase).length;
+  const registration=data.orders.filter(o=>followUpFlags(o).registration).length,rulesPending=data.orders.filter(o=>followUpFlags(o).rules).length,unplaced=data.orders.filter(awaitingPurchase).length;
   const pair=(glyph,label,left,right,kind='')=>`<div class="metric metric-pair ${kind}"><span class="metric-label">${icon(glyph)}<span>${label}</span></span><div class="metric-value">${[left,right].map(([count,name,target,targetFilter],index)=>`${index?'<span class="metric-slash" aria-hidden="true">/</span>':''}<button class="metric-number" data-go="${target}" data-filter="${targetFilter}" aria-label="${name} ${count}" title="查看${name}"><strong>${count}</strong></button>`).join('')}</div></div>`;
   const metricCards=pair('clipboard-list','待下單/訂單數',[unplaced,'待下單','orders','pending'],[s.orders,'訂單數','orders','all'])+
     pair('clock-3','待寄規則/待出貨',[rulesPending,'待寄規則','orders','rules'],[registration,'待出貨','orders','registration'],rulesPending>0||registration>0?'warn':'')+
@@ -82,7 +82,7 @@ const parseTime=value=>parseTimestamp(value)??0;
 function ordersView(){
   let rows=data.orders.filter(o=>(o.name+' '+(o.nickname||'')+' '+o.lines.map(l=>l.name).join(' ')).toLowerCase().includes(search.toLowerCase()));
   if(filter==='pending')rows=rows.filter(awaitingPurchase);if(filter==='done')rows=rows.filter(o=>o.status==='已出貨');
-  if(['registration','rules','review'].includes(filter))rows=rows.filter(o=>followUp(o).kind===filter);
+  if(['registration','rules','review'].includes(filter))rows=rows.filter(o=>followUpFlags(o)[filter]);
   rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):(parseTime(a.time)-parseTime(b.time))*(sort==='old'?1:-1));
   return filters('搜尋顧客、品項',[['all','全部'],['registration','待出貨登記'],['rules','待寄規則'],['pending','待下單'],['done','已出貨'],['review','待核對']],[['new','填單時間新到舊'],['old','填單時間舊到新'],['name','依姓名']],'order-followup-filters')+`<div class="count-line"><span>共 ${rows.length} 筆訂單</span><span>依原始訂單分列</span></div>`+
   (rows.map(o=>`<article class="order"><div class="order-top"><div><button class="order-name" data-order="${esc(o.id)}">${esc(o.name||'姓名待核對')}${icon('chevron-right')}</button><p class="order-meta">${esc(o.nickname||'')}${o.nickname?' · ':''}${o.manual?'手動訂單':esc(o.time||'填單時間未記錄')}</p></div><strong>${money(o.total)}</strong></div><div class="badges">${orderStatusBadge(o)}${progressBadges(o)}${o.manual?badge('手動追加'):''}${o.phoneSuffix?badge('手機末碼 '+o.phoneSuffix):''}</div><div class="order-items">${o.lines.map(l=>`<span class="order-item">${icon('package')}${esc(l.name)} × ${num(l.quantity)}</span>`).join('')}</div></article>`).join('')||empty('沒有符合條件的訂單'));
@@ -357,3 +357,4 @@ async function restoreSession(){
   catch(e){if(generation===authGeneration){token='';$('#login-status').textContent='無法恢復登入：'+e.message;}}
 }
 initializeGoogle();icons();window.addEventListener('load',icons);
+

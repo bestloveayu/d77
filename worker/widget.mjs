@@ -1,4 +1,4 @@
-import {awaitingPurchase,classifyFollowUp} from '../public/order-followup.js';
+import {awaitingPurchase,classifyFollowUp,followUpFlags} from '../public/order-followup.js';
 import {widgetFacts,orderFacts,itemFacts,pendingFacts} from './widget-facts.mjs';
 import {parseTimestamp} from '../public/timestamp.js';
 import {dedupeEvents} from './event-dedupe.mjs';
@@ -85,14 +85,14 @@ function shortcut(snapshot,event){
 export function widgetSummary(snapshot,events=[],stale=false,error=null){
   const counts=snapshot?{
     awaitingPurchase:snapshot.orders.filter(awaitingPurchase).length,
-    awaitingShipment:snapshot.orders.filter(o=>(o.followUp||classifyFollowUp(o)).kind==='registration').length,
-    awaitingRules:snapshot.orders.filter(o=>(o.followUp||classifyFollowUp(o)).kind==='rules').length,
+    awaitingShipment:snapshot.orders.filter(o=>followUpFlags(o).registration).length,
+    awaitingRules:snapshot.orders.filter(o=>followUpFlags(o).rules).length,
     shortage:snapshot.products.filter(p=>p.shortage>0||p.usedShortage>0).length
   }:{awaitingPurchase:null,awaitingShipment:null,awaitingRules:null,shortage:null};
   const definitions=[['awaitingShipment','已下單待出貨','orders','筆訂單等待出貨登記'],['awaitingRules','已出貨待寄規則','orders','筆訂單等待寄送規則'],['awaitingPurchase','新增預購','orders','筆訂單尚無已確認下單量'],['shortage','缺貨待補','inventory','款品項庫存不足']];
   const result={season:snapshot?.season||'',updatedAt:snapshot?.updatedAt||null,stale:!!stale,error:error?'雲端更新未完成，顯示上次資料':null,counts,
     todos:definitions.filter(([key])=>counts[key]>0).flatMap(([key,title,page])=>{
-      const matching=key==='shortage'?snapshot.products.filter(p=>p.shortage>0||p.usedShortage>0):snapshot.orders.filter(o=>key==='awaitingPurchase'?awaitingPurchase(o):(o.followUp||classifyFollowUp(o)).kind===(key==='awaitingShipment'?'registration':'rules'));
+      const matching=key==='shortage'?snapshot.products.filter(p=>p.shortage>0||p.usedShortage>0):snapshot.orders.filter(o=>key==='awaitingPurchase'?awaitingPurchase(o):followUpFlags(o)[key==='awaitingShipment'?'registration':'rules']);
       matching.sort((a,b)=>key==='shortage'?(b.shortage||0)+(b.usedShortage||0)-(a.shortage||0)-(a.usedShortage||0):(parseTimestamp(b.time)||0)-(parseTimestamp(a.time)||0));
       return matching.slice(0,8).map(o=>({title:o.name+' · '+title,body:key==='shortage'?'全新缺 '+(o.shortage??'?')+' 盒；二手缺 '+(o.usedShortage??'?')+' 盒；全新庫存 '+(o.stock??'?')+' 盒':key==='awaitingRules'?pendingFacts(o,'rules-pending').body:key==='awaitingPurchase'?itemFacts(o):pendingFacts(o,'registration').body,page,time:null,...shortcut(snapshot,{type:key==='shortage'?'shortage':key==='awaitingRules'?'rules-pending':key==='awaitingPurchase'?'order':'registration',target:key==='shortage'?{name:o.name}:{id:o.id}})}));
     }),
@@ -105,3 +105,4 @@ export function widgetSummary(snapshot,events=[],stale=false,error=null){
   result.todos=result.todos.filter(todo=>!['registration','rules-pending'].includes(todo.type)||!result.events.some(event=>event.target?.id===todo.target?.id&&(event.type===todo.type||todo.type==='registration'&&event.type==='purchase')));
   return result;
 }
+

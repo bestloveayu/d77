@@ -1,4 +1,4 @@
-import {classifyFollowUp,needsAttention} from '../public/order-followup.js';
+import {classifyFollowUp,followUpFlags,needsAttention} from '../public/order-followup.js';
 import {parseTimestamp as stockTime} from '../public/timestamp.js';
 import {confirmedCatalog,confirmedName} from './confirmed-catalog.mjs';
 import {widgetFacts,itemFacts,pendingFacts} from './widget-facts.mjs';
@@ -281,10 +281,10 @@ export async function compose(input, config, now = new Date().toISOString()) {
     // Do not expose contact details to the mobile app.
     delete order.email;order.phoneSuffix=order.phone?.slice(-3)||'';delete order.phone;
   }
-  return {season:config.season,updatedAt:now,widgetFactsVersion:1,followUpVersion:2,inventoryVersion:3,stockCalculationVersion:1,unmatchedShipments,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
+  return {season:config.season,updatedAt:now,widgetFactsVersion:1,followUpVersion:3,inventoryVersion:3,stockCalculationVersion:1,unmatchedShipments,orders,products,finance:{income:money.income,cost:money.cost,profit:money.income-money.cost,eastDue:money.eastDue},
     ledgerDetailVersion:1,transactions:money.transactions,issues:money.issues,operations:team.operations.filter(o=>o.season===config.season).map(o=>({id:o.id,actor:o.actor,kind:o.kind,status:o.status,time:o.updatedAt||o.createdAt})),
     sourceStatus:{catalog:'ok',responses:'ok',ledger:'ok',team:'ok',documents:'ok',rules:'ok'},
-    summary:{orders:orders.length,attention:orders.filter(needsAttention).length,registrationPending:orders.filter(o=>o.followUp.kind==='registration').length,rulesPending:orders.filter(o=>o.followUp.kind==='rules').length,shortages:products.filter(p=>p.shortage>0||p.usedShortage>0).length,unknownStock:products.filter(p=>p.coverage==='unknown').length,
+    summary:{orders:orders.length,attention:orders.filter(needsAttention).length,registrationPending:orders.filter(o=>followUpFlags(o).registration).length,rulesPending:orders.filter(o=>followUpFlags(o).rules).length,shortages:products.filter(p=>p.shortage>0||p.usedShortage>0).length,unknownStock:products.filter(p=>p.coverage==='unknown').length,
       unmatchedShipments:unmatchedShipments.length,rulesReady:products.filter(p=>p.rules.length).length,rulesTotal:products.length}};
 }
 export async function changes(previous, next) {
@@ -294,8 +294,8 @@ export async function changes(previous, next) {
   const newDemand=new Set(next.orders.filter(o=>!oldOrders.has(o.id)).flatMap(o=>o.lines.filter(l=>l.quantity>0).map(l=>l.name)));
   for(const o of next.orders){const old=oldOrders.get(o.id);
     // An older snapshot establishes a silent migration baseline for the new reminders.
-    const task=o.followUp?.kind;
-    if(previous.followUpVersion===next.followUpVersion&&next.followUpVersion>=1&&['registration','rules'].includes(task)&&old?.followUp?.kind!==task){
+    const flags=followUpFlags(o),oldFlags=old?followUpFlags(old):{};
+    for(const task of ['registration','rules'])if(previous.followUpVersion===next.followUpVersion&&next.followUpVersion>=1&&flags[task]&&!oldFlags[task]){
       const type=task==='rules'?'rules-pending':task,facts=pendingFacts(o,type);
       await add(type,[o.id,task,next.updatedAt],facts.title,facts.body,{page:'orders',id:o.id});
       events.at(-1).activityFacts=facts;
@@ -357,3 +357,4 @@ export async function changes(previous, next) {
     await add('activity',o.id,(o.actor||'成員')+'完成'+({shipment:'出貨登記',purchase:'下單',mail:'規則寄送'}[o.kind]||'協作操作'),'雲端已確認',{page:'notifications'},o.time);
   return events.map(event=>{const facts=widgetFacts(next,event);return facts?{...event,widgetFacts:facts}:event;});
 }
+
