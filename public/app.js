@@ -10,6 +10,7 @@ import {createPushClient} from './push.js?v=20261102.1';
 import {classifyFollowUp,followUpFlags,awaitingPurchase,notificationChoices,notificationTypes} from './order-followup.js?v=20261116.1';
 import {filterTransactions,transactionTotals,transactionAmount,personCash} from './transaction-summary.js?v=20261103.2';
 import {openEmailPreview} from './email-preview.js?v=20261114.1';
+import {recentShortages,compareStockUpdated} from './stock-order.js?v=20261116.2';
 const $=s=>document.querySelector(s),config=window.BOARD_CONFIG||{};
 const deviceStorage={get(key){try{return localStorage.getItem(key);}catch{return null;}},set(key,value){try{localStorage.setItem(key,value);return true;}catch{return false;}},remove(key){try{localStorage.removeItem(key);}catch{}}};
 const icon=name=>`<i data-lucide="${name}" aria-hidden="true"></i>`;
@@ -62,7 +63,7 @@ function overview(){
     pair('clock-3','待寄規則/待出貨',[rulesPending,'待寄規則','orders','rules'],[registration,'待出貨','orders','registration'],rulesPending>0||registration>0?'warn':'')+
     `<button class="metric warn" data-go="inventory" data-filter="shortage"><span class="metric-label">${icon('package-open')}<span>缺貨品項</span></span><span class="metric-value"><strong>${s.shortages}</strong><span class="metric-chevron">${icon('chevron-right')}</span></span></button>`+
     pair('book-open-check','規則已完成',[s.rulesReady,'已完成規則','rules','ready'],[s.rulesTotal,'全部規則','rules','all']);
-  const low=data.products.filter(p=>p.shortage>0||p.usedShortage>0).slice(0,4);
+  const low=recentShortages(data.products);
   const finance=financeSummary(`<button class="text-button" data-go="transactions">查看全部 ${icon('chevron-right')}</button>`,'overview-finance');
   return `<section class="section">${heading('最新動態',`<button class="text-button" data-go="notifications">查看全部 ${icon('chevron-right')}</button>`)}${eventList(events.slice(0,3))}</section>
   <section class="section">${heading('待辦提醒')}
@@ -96,7 +97,7 @@ function inventoryView(){
   let rows=data.products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
   if(filter==='shortage')rows=rows.filter(p=>p.shortage>0||p.usedShortage>0);if(filter==='used')rows=rows.filter(p=>p.usedStock!==0||p.usedOrdered>0||p.usedShipped>0);if(filter==='unknown')rows=rows.filter(p=>p.coverage==='unknown');if(filter==='shipping')rows=rows.filter(p=>p.outstanding>0||p.usedOutstanding>0);
   const totalStock=p=>(p.stock??0)+(p.usedStock??0);
-  rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):sort==='outstanding-desc'?(b.outstanding??-1)-(a.outstanding??-1):sort==='ordered-desc'?(b.ordered??-1)-(a.ordered??-1):sort==='stock-desc'?totalStock(b)-totalStock(a):sort==='stock'?totalStock(a)-totalStock(b):sort==='shortage'?(b.shortage??-1)-(a.shortage??-1):(b.stockUpdatedTime||0)-(a.stockUpdatedTime||0)||(b.stockUpdatedRow||0)-(a.stockUpdatedRow||0));
+  rows=[...rows].sort((a,b)=>sort==='name'?a.name.localeCompare(b.name,'zh-TW'):sort==='outstanding-desc'?(b.outstanding??-1)-(a.outstanding??-1):sort==='ordered-desc'?(b.ordered??-1)-(a.ordered??-1):sort==='stock-desc'?totalStock(b)-totalStock(a):sort==='stock'?totalStock(a)-totalStock(b):sort==='shortage'?(b.shortage??-1)-(a.shortage??-1):compareStockUpdated(a,b));
   const reconcile=data.unmatchedShipments?.length?`<button id="inventory-reconcile" class="alert-row warn">${icon('triangle-alert')}<span class="text"><strong>${data.unmatchedShipments.length} 筆金流出貨未對應本季品項</strong><small>這些出貨尚未納入下列數量</small></span>${icon('chevron-right')}</button>`:'';
   return filters('搜尋品項',[['all','全部'],['shortage','缺貨'],['used','二手'],['shipping','需出貨']],[['new','更新時間新到舊'],['shortage','缺貨多到少'],['outstanding-desc','待出貨量由多至少'],['ordered-desc','訂購量由多至少'],['stock-desc','庫存由多至少'],['name','依名稱'],['stock','庫存少到多']])+`<div class="count-line inventory-count"><span>共 ${rows.length} 個品項</span></div>`+reconcile+stockTable(rows,true)+`<p class="read-only-note">${icon('info')} 待出量＝訂購量－本季金流出貨量；缺貨＝待出量－全新庫存，最低為 0。二手獨立計算，不與全新互抵。</p>`;
 }
